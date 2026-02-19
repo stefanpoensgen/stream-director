@@ -84,8 +84,10 @@ async function createWindow() {
         },
       };
     }
-    // Open all other external links in the default browser
-    shell.openExternal(url);
+    // Open known external links in the default browser
+    if (url.startsWith('https://github.com/')) {
+      shell.openExternal(url);
+    }
     return { action: 'deny' };
   });
 

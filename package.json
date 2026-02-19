@@ -1,6 +1,6 @@
 {
   "name": "stream-director",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Lightweight multiview Twitch dashboard for OBS window capture",
   "repository": "stefanpoensgen/stream-director",
   "main": "electron.js",

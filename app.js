@@ -422,13 +422,31 @@ async function startAll() {
 
   for (const name of ordered) {
     setFocus(name);
-    // Give the player time to start playing
-    await new Promise((r) => setTimeout(r, START_ALL_DELAY_MS));
+    const entry = players.get(name);
+    if (entry?.player) entry.player.play();
+    await waitForPlaying(name);
   }
 
   // Restore original focus (or keep last if none was set)
   setFocus(originalFocus ?? ordered[0]);
   dom.startAll.disabled = false;
+}
+
+/** Wait until a player fires PLAYING, or timeout as fallback. */
+function waitForPlaying(name) {
+  return new Promise((resolve) => {
+    const entry = players.get(name);
+    if (!entry?.player) {
+      resolve();
+      return;
+    }
+    const timeout = setTimeout(resolve, START_ALL_DELAY_MS);
+    entry.player.addEventListener(Twitch.Player.PLAYING, function onPlay() {
+      clearTimeout(timeout);
+      entry.player.removeEventListener(Twitch.Player.PLAYING, onPlay);
+      resolve();
+    });
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════

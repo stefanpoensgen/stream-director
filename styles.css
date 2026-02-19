@@ -636,12 +636,15 @@ ul {
 }
 
 .player-slot.is-focus .player-label {
-  opacity: 1;
   top: 0;
   right: 0;
   bottom: auto;
   left: auto;
   border-radius: 0 0 0 4px;
+}
+
+.player-slot.is-focus:hover .player-label {
+  opacity: 1;
 }
 
 /* ─── Offline Badge ──────────────────────────────────────────────── */
