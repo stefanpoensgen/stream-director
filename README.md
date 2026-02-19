@@ -15,7 +15,7 @@ Grab the portable `.exe` from the [latest release](https://github.com/stefanpoen
 
 ## Usage
 
-- **Add channels** via the sidebar input or the **Import** button (paste a list, one per line)
+- **Add channels** via the sidebar input or the **Import** button (paste a list, one per line). Check the [Discussions](https://github.com/stefanpoensgen/stream-director/discussions) for ready-made channel lists for upcoming events
 - **Toggle** channels live with the switch in the sidebar
 - **Click** a channel name to focus it (large view + audio)
 - **Start All** activates all live channels at once
