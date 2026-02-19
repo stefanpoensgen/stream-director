@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreamDirector</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <!-- Sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <form class="add-channel" id="add-channel-form" autocomplete="off">
+            <input
+              type="text"
+              id="add-channel-input"
+              class="add-channel-input"
+              placeholder="Add channel…"
+              pattern="[a-zA-Z0-9_]+"
+            />
+            <button type="submit" class="add-channel-btn" title="Add channel">+</button>
+          </form>
+        </div>
+        <ul class="channel-list" id="channel-list"></ul>
+        <div class="sidebar-footer">
+          <button class="start-all-btn" id="start-all" title="Start all live players">
+            &#9654; Start All
+          </button>
+          <button class="import-btn" id="import-btn" title="Import channel list">Import</button>
+          <span class="hotkey-hint">&larr;&rarr; cycle &middot; F last &middot; S sidebar</span>
+        </div>
+      </aside>
+
+      <!-- Main content: single grid, all players as direct children -->
+      <main class="content" id="content">
+        <div class="focus-empty" id="focus-empty">
+          <div class="focus-empty-icon">&#9654;</div>
+          <span>Select a channel to start</span>
+        </div>
+        <!-- Branding cell: bottom-left corner (logo + buttons + drag handle) -->
+        <div class="branding" id="branding">
+          <span class="branding-logo" title="Drag to move window"
+            >Stream<span class="logo-accent">Director</span></span
+          >
+          <div class="branding-buttons">
+            <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar (S)">
+              Menu
+            </button>
+            <button class="twitch-login-btn" id="twitch-login" title="Twitch Login">Login</button>
+            <button class="close-btn" id="close-btn" title="Close">&#10005;</button>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Import Modal -->
+    <div class="import-overlay hidden" id="import-overlay">
+      <div class="import-modal">
+        <div class="import-title">Import Channels</div>
+        <textarea
+          class="import-textarea"
+          id="import-textarea"
+          placeholder="One channel per line, e.g.&#10;shroud&#10;pokimane&#10;xqc"
+          rows="12"
+        ></textarea>
+        <div class="import-actions">
+          <button class="import-cancel" id="import-cancel">Cancel</button>
+          <button class="import-confirm" id="import-confirm">Import</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Twitch Embed Player API (only external resource) -->
+    <script src="https://player.twitch.tv/js/embed/v1.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
