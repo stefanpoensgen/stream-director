@@ -13,22 +13,6 @@ Grab the portable `.exe` from the [latest release](https://github.com/stefanpoen
 
 > **Windows SmartScreen:** Since the app is not code-signed, Windows Defender may show a warning on first launch. Click **"More info"** → **"Run anyway"** to proceed.
 
-## Quick Start
-
-```bash
-# Install dependencies
-npm install
-
-# Development (hot reload + DevTools)
-npm run dev
-
-# Production
-npm start
-
-# Build portable .exe
-npm run build
-```
-
 ## Usage
 
 - **Add channels** via the sidebar input or the **Import** button (paste a list, one per line)
@@ -65,7 +49,25 @@ L-shape grid optimized for 1920x1080:
 
 Focus switches only toggle CSS classes and mute/unmute — no iframe reload, no DOM re-parenting.
 
-## Architecture
+---
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Development (hot reload + DevTools)
+npm run dev
+
+# Lint & format check
+npm run check
+
+# Build portable .exe
+npm run build
+```
+
+### Architecture
 
 ```
 electron.js       Electron main process, local HTTP server
@@ -76,7 +78,7 @@ styles.css        Dark theme, CSS Grid layout
 
 State is persisted in `localStorage`. Max 14 simultaneous players with LRU eviction.
 
-## Release
+### Release
 
 Tag a version to trigger a GitHub Action that builds the portable `.exe` and creates a release:
 
