@@ -1,0 +1,40 @@
+{
+  "name": "stream-director",
+  "version": "0.0.1",
+  "description": "Lightweight multiview Twitch dashboard for OBS window capture",
+  "repository": "stefanpoensgen/stream-director",
+  "main": "electron.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env NODE_ENV=development electron . --dev",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "eslint . && prettier --check .",
+    "build": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.streamdirector.app",
+    "productName": "StreamDirector",
+    "files": [
+      "electron.js",
+      "index.html",
+      "app.js",
+      "styles.css"
+    ],
+    "win": {
+      "target": "portable"
+    }
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^40.6.0",
+    "electron-builder": "^26.8.1",
+    "electron-reloader": "^1.2.3",
+    "eslint": "^10.0.0",
+    "prettier": "^3.8.1"
+  }
+}
