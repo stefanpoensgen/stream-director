@@ -62,6 +62,7 @@ ul {
 
 /* ─── Branding Cell (bottom-left corner) ─────────────────────────── */
 .branding {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -93,6 +94,24 @@ ul {
   display: flex;
   gap: 6px;
   -webkit-app-region: no-drag;
+}
+
+.github-link {
+  position: absolute;
+  bottom: 4px;
+  left: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 10px;
+  -webkit-app-region: no-drag;
+  transition: color var(--transition);
+}
+
+.github-link:hover {
+  color: var(--text);
 }
 
 /* ─── Branding Buttons (Menu + Login + Close) ───────────────────── */

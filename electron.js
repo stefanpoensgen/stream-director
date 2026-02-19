@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, shell } = require('electron');
 
 if (process.env.NODE_ENV === 'development') {
   try {
@@ -84,6 +84,8 @@ async function createWindow() {
         },
       };
     }
+    // Open all other external links in the default browser
+    shell.openExternal(url);
     return { action: 'deny' };
   });
 
@@ -93,6 +95,14 @@ async function createWindow() {
   }
 
   win.loadURL(`http://localhost:${PORT}`);
+
+  // Inject app version from package.json into the renderer
+  win.webContents.on('did-finish-load', () => {
+    const v = app.getVersion();
+    win.webContents.executeJavaScript(
+      `document.querySelector('.version')?.replaceChildren('v${v}')`,
+    );
+  });
 }
 
 app.whenReady().then(createWindow);
