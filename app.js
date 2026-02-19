@@ -8,6 +8,9 @@ const DEFAULT_MAX_PLAYERS = 14;
 const PARENT_DOMAIN = location.hostname || 'localhost';
 const START_ALL_DELAY_MS = 1500;
 const LIVE_CHECK_INTERVAL_MS = 60_000;
+const TWITCH_GQL_URL = 'https://gql.twitch.tv/gql';
+const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+const GQL_BATCH_SIZE = 35;
 const IS_ELECTRON = navigator.userAgent.includes('Electron');
 
 // ─── Application State ─────────────────────────────────────────────
@@ -70,12 +73,16 @@ function init() {
   }
 }
 
-/** Scrape twitch.tv/{name} for "isLiveBroadcast" to detect live status. */
+/** Check a single channel's live status via Twitch GQL API. */
 async function checkIfLive(name) {
   try {
-    const res = await fetch(`https://twitch.tv/${name}`);
-    const html = await res.text();
-    return html.includes('isLiveBroadcast');
+    const res = await fetch(TWITCH_GQL_URL, {
+      method: 'POST',
+      headers: { 'Client-ID': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: `query { user(login: "${name}") { stream { id } } }` }),
+    });
+    const data = await res.json();
+    return !!data.data?.user?.stream;
   } catch {
     return false;
   }
@@ -83,22 +90,46 @@ async function checkIfLive(name) {
 
 let liveCheckRunning = false;
 
+/** Batch-check all channels via Twitch GQL API (single request per batch). */
 async function checkAllLive() {
   if (liveCheckRunning) return;
   liveCheckRunning = true;
 
-  const BATCH_DELAY_MS = 500;
   try {
-    for (const ch of state.channels) {
-      const live = await checkIfLive(ch.name);
-      if (live) {
-        onlineSet.add(ch.name);
-      } else {
-        onlineSet.delete(ch.name);
+    const names = state.channels.map((ch) => ch.name);
+    const liveNames = new Set();
+
+    for (let i = 0; i < names.length; i += GQL_BATCH_SIZE) {
+      const batch = names.slice(i, i + GQL_BATCH_SIZE);
+      const aliases = batch.map(
+        (name, j) => `u${j}: user(login: "${name}") { login stream { id } }`,
+      );
+
+      try {
+        const res = await fetch(TWITCH_GQL_URL, {
+          method: 'POST',
+          headers: { 'Client-ID': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: `query { ${aliases.join(' ')} }` }),
+        });
+        const data = await res.json();
+        for (let j = 0; j < batch.length; j++) {
+          if (data.data?.[`u${j}`]?.stream) {
+            liveNames.add(batch[j]);
+          }
+        }
+      } catch {
+        // On failure, preserve previous state for this batch
+        for (const name of batch) {
+          if (onlineSet.has(name)) liveNames.add(name);
+        }
       }
-      renderSidebar();
-      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
     }
+
+    onlineSet.clear();
+    for (const name of liveNames) {
+      onlineSet.add(name);
+    }
+    renderSidebar();
   } finally {
     liveCheckRunning = false;
   }
