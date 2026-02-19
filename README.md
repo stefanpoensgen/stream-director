@@ -7,6 +7,8 @@
 Lightweight multiview Twitch dashboard packaged as an Electron desktop app.
 Designed for 1920x1080 OBS window capture in live productions.
 
+![StreamDirector Preview](preview.jpg)
+
 ## Download
 
 Grab the portable `.exe` from the [latest release](https://github.com/stefanpoensgen/stream-director/releases/latest). No installation required.
