@@ -44,6 +44,7 @@ function cacheDom() {
   dom.startAll = document.getElementById('start-all');
   dom.twitchLogin = document.getElementById('twitch-login');
   dom.branding = document.getElementById('branding');
+  dom.chatBtn = document.getElementById('chat-btn');
   dom.closeBtn = document.getElementById('close-btn');
   dom.importBtn = document.getElementById('import-btn');
   dom.importOverlay = document.getElementById('import-overlay');
@@ -276,6 +277,9 @@ function setFocus(name) {
     players.get(name).player?.setMuted(false);
   }
 
+  // Update chat popup if open
+  if (chatWindow && !chatWindow.closed) openChat();
+
   syncPlayers();
   renderSidebar();
   saveState();
@@ -353,6 +357,20 @@ function showImportModal() {
 
 function hideImportModal() {
   dom.importOverlay.classList.add('hidden');
+}
+
+/** Open or update Twitch chat popup for the currently focused channel. */
+let chatWindow = null;
+
+function openChat() {
+  if (!state.focus) return;
+  const url = `https://www.twitch.tv/popout/${state.focus}/chat?popout=`;
+  if (chatWindow && !chatWindow.closed) {
+    chatWindow.location = url;
+    chatWindow.focus();
+  } else {
+    chatWindow = window.open(url, 'sd-chat');
+  }
 }
 
 /** Remove a channel from the pool and clean up any live/focus state. */
@@ -780,6 +798,7 @@ function bindEvents() {
   dom.twitchLogin.addEventListener('click', () => {
     window.open('https://www.twitch.tv/login', '_blank');
   });
+  dom.chatBtn.addEventListener('click', openChat);
   dom.closeBtn.addEventListener('click', () => window.close());
 
   // Import
@@ -825,6 +844,11 @@ function handleHotkey(e) {
     case 'S':
       e.preventDefault();
       toggleSidebar();
+      break;
+    case 'c':
+    case 'C':
+      e.preventDefault();
+      openChat();
       break;
   }
 }

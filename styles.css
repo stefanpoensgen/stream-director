@@ -114,10 +114,10 @@ ul {
   color: var(--text);
 }
 
-/* ─── Branding Buttons (Menu + Login + Close) ───────────────────── */
+/* ─── Branding Buttons (Menu + Chat + Login) ─────────────────────── */
 .sidebar-toggle,
-.twitch-login-btn,
-.close-btn {
+.chat-btn,
+.twitch-login-btn {
   padding: 4px 12px;
   font-size: 12px;
   font-weight: 600;
@@ -132,10 +132,29 @@ ul {
 }
 
 .sidebar-toggle:hover,
-.twitch-login-btn:hover,
-.close-btn:hover {
+.chat-btn:hover,
+.twitch-login-btn:hover {
   color: var(--accent-hover);
   background: var(--surface-hover);
+}
+
+/* ─── Close Button (top-left corner) ─────────────────────────────── */
+.close-btn {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition:
+    color var(--transition),
+    background var(--transition);
 }
 
 .close-btn:hover {
@@ -513,9 +532,10 @@ ul {
 }
 
 .hotkey-hint {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--text-dim);
   letter-spacing: 0.02em;
+  text-align: center;
 }
 
 /* ─── Main Content — CSS Grid (L-shape layout) ──────────────────── *
@@ -613,6 +633,15 @@ ul {
 
 .player-slot.is-tile .player-label {
   opacity: 1;
+}
+
+.player-slot.is-focus .player-label {
+  opacity: 1;
+  top: 0;
+  right: 0;
+  bottom: auto;
+  left: auto;
+  border-radius: 0 0 0 4px;
 }
 
 /* ─── Offline Badge ──────────────────────────────────────────────── */
