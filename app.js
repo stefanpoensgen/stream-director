@@ -236,13 +236,18 @@ function addLive(name) {
 
 function removeLive(name) {
   state.liveSet.delete(name);
-  destroyPlayer(name);
   if (state.focus === name) state.focus = null;
+  // DOM cleanup is handled by syncPlayers in the correct order
 }
 
 function toggleLive(name) {
   if (state.liveSet.has(name)) {
     removeLive(name);
+    // Auto-focus another live channel if the focused one was toggled off
+    if (!state.focus) {
+      const next = getOrderedLiveChannels()[0];
+      if (next) state.focus = next;
+    }
   } else {
     addLive(name);
   }
@@ -378,6 +383,8 @@ function removeChannel(name) {
   const idx = state.channels.findIndex((c) => c.name === name);
   if (idx === -1) return;
 
+  const wasFocus = state.focus === name;
+
   // Clean up if this channel is live or focused
   if (state.liveSet.has(name)) removeLive(name);
   if (state.focus === name) state.focus = null;
@@ -390,6 +397,13 @@ function removeChannel(name) {
     li.remove();
     sidebarItems.delete(name);
   }
+
+  // Auto-focus another live channel if the focused one was removed
+  if (wasFocus && !state.focus) {
+    const next = getOrderedLiveChannels()[0];
+    if (next) state.focus = next;
+  }
+
   syncPlayers();
   renderSidebar();
   saveState();
@@ -574,10 +588,20 @@ function updateGridLayout() {
 function syncPlayers() {
   const shouldBeFocus = state.focus;
 
-  // 1. Destroy players that are no longer live
+  // 1. Detach stale players from map, hide containers (no grid reflow yet)
+  const staleContainers = [];
   for (const name of [...players.keys()]) {
     if (!state.liveSet.has(name)) {
-      destroyPlayer(name);
+      const entry = players.get(name);
+      if (entry.player) {
+        try {
+          entry.player.destroy();
+        } catch {}
+      }
+      entry.container.style.display = 'none';
+      staleContainers.push(entry.container);
+      onlineSet.delete(name);
+      players.delete(name);
     }
   }
 
@@ -596,10 +620,28 @@ function syncPlayers() {
     entry.container.classList.toggle('is-tile', !isFocus);
   }
 
-  // 4. Update grid layout — focus center, tiles above & below
+  // 4. Update grid layout (stale containers are hidden, won't affect layout)
   updateGridLayout();
 
-  // 5. Toggle empty state
+  // 5. Remove stale containers from DOM after grid is stable
+  for (const el of staleContainers) {
+    el.remove();
+  }
+
+  // 6. Re-ensure focus player is playing after grid settles
+  if (shouldBeFocus && players.has(shouldBeFocus)) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const fe = players.get(shouldBeFocus);
+        if (fe?.player) {
+          fe.player.setMuted(false);
+          fe.player.play();
+        }
+      });
+    });
+  }
+
+  // 7. Toggle empty state
   dom.focusEmpty.classList.toggle('hidden', players.size > 0);
 }
 
@@ -670,19 +712,6 @@ function createPlayer(name) {
   }
 
   players.set(name, { container, player });
-}
-
-function destroyPlayer(name) {
-  const entry = players.get(name);
-  if (!entry) return;
-  if (entry.player) {
-    try {
-      entry.player.destroy();
-    } catch {}
-  }
-  onlineSet.delete(name);
-  entry.container.remove();
-  players.delete(name);
 }
 
 // ═══════════════════════════════════════════════════════════════════

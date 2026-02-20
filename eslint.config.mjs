@@ -16,6 +16,7 @@ export default [
         fetch: 'readonly',
         console: 'readonly',
         Twitch: 'readonly',
+        requestAnimationFrame: 'readonly',
         URL: 'readonly',
         Promise: 'readonly',
         Map: 'readonly',
