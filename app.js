@@ -12,6 +12,7 @@ const TWITCH_GQL_URL = 'https://gql.twitch.tv/gql';
 const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
 const GQL_BATCH_SIZE = 35;
 const IS_ELECTRON = navigator.userAgent.includes('Electron');
+const IS_DEV = new URL(location.href).searchParams.has('dev');
 
 // ─── Application State ─────────────────────────────────────────────
 const state = {
@@ -71,6 +72,11 @@ function init() {
   if (IS_ELECTRON) {
     checkAllLive();
     setInterval(checkAllLive, LIVE_CHECK_INTERVAL_MS);
+  }
+
+  // Quality debug badges (dev mode only)
+  if (IS_DEV) {
+    setInterval(updateQualityBadges, 2000);
   }
 }
 
@@ -665,6 +671,14 @@ function createPlayer(name) {
   badge.textContent = 'OFFLINE';
   container.appendChild(badge);
 
+  // Quality debug badge (dev mode only)
+  let qualityBadge = null;
+  if (IS_DEV) {
+    qualityBadge = document.createElement('div');
+    qualityBadge.className = 'quality-badge';
+    container.appendChild(qualityBadge);
+  }
+
   // Twitch player target
   const targetId = `pt-${name}-${Date.now()}`;
   const target = document.createElement('div');
@@ -711,7 +725,31 @@ function createPlayer(name) {
     console.warn('Twitch.Player API not available — running in preview mode.');
   }
 
-  players.set(name, { container, player });
+  players.set(name, { container, player, qualityBadge });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Quality Debug Badge (dev mode)
+// ═══════════════════════════════════════════════════════════════════
+
+function updateQualityBadges() {
+  for (const [, entry] of players) {
+    if (!entry.qualityBadge || !entry.player) continue;
+    try {
+      const stats = entry.player.getPlaybackStats();
+      const quality = entry.player.getQuality();
+      if (stats && stats.videoResolution) {
+        const h = stats.videoResolution.split('x')[1];
+        const fps = Math.round(stats.fps || 0);
+        const res = `${h}p${fps}`;
+        entry.qualityBadge.textContent = quality === 'auto' ? `auto \u2192 ${res}` : res;
+      } else {
+        entry.qualityBadge.textContent = quality || '\u2026';
+      }
+    } catch {
+      entry.qualityBadge.textContent = '\u2026';
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════

@@ -29,7 +29,8 @@
           </button>
           <button class="import-btn" id="import-btn" title="Import channel list">Import</button>
           <span class="hotkey-hint"
-            >&larr;&rarr; cycle &middot; F last &middot; S sidebar &middot; C chat</span
+            >&larr;&rarr; cycle &middot; F last &middot; S sidebar &middot; C chat &middot; F11
+            fullscreen</span
           >
         </div>
       </aside>
@@ -42,9 +43,11 @@
         </div>
         <!-- Branding cell: bottom-left corner (logo + buttons + drag handle) -->
         <div class="branding" id="branding">
+          <button class="close-btn" id="close-btn" title="Close">&#10005;</button>
           <span class="branding-logo" title="Drag to move window"
             >Stream<span class="logo-accent">Director</span></span
           >
+          <span class="drag-hint">drag to move</span>
           <a
             class="github-link"
             href="https://github.com/stefanpoensgen/stream-director"
@@ -58,7 +61,6 @@
             </svg>
             <span class="version"></span>
           </a>
-          <button class="close-btn" id="close-btn" title="Close">&#10005;</button>
           <div class="branding-buttons">
             <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar (S)">
               Menu

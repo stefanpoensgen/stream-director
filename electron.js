@@ -25,6 +25,7 @@ function startServer() {
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const pathname = decodeURIComponent(url.pathname);
+
       const filePath = path.join(__dirname, pathname === '/' ? 'index.html' : pathname);
 
       // Block path traversal
@@ -91,12 +92,21 @@ async function createWindow() {
     return { action: 'deny' };
   });
 
+  // F11 toggles fullscreen
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F11') {
+      win.setFullScreen(!win.isFullScreen());
+      event.preventDefault();
+    }
+  });
+
   // Open DevTools in dev mode (pass --dev flag)
   if (process.argv.includes('--dev')) {
     win.webContents.openDevTools();
   }
 
-  win.loadURL(`http://localhost:${PORT}`);
+  const devQuery = process.argv.includes('--dev') ? '?dev' : '';
+  win.loadURL(`http://localhost:${PORT}${devQuery}`);
 
   // Inject app version from package.json into the renderer
   win.webContents.on('did-finish-load', () => {
