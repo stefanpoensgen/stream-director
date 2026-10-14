@@ -1086,6 +1086,7 @@ let followedRows = [];
 
 function renderSidebar() {
   const ownNames = new Set(state.channels.map((c) => c.name));
+  const followedNames = new Set(followedConnected ? followedChannels.map((c) => c.login) : []);
   const followedOnly = followedConnected
     ? followedChannels.filter((channel) => !ownNames.has(channel.login))
     : [];
@@ -1135,6 +1136,8 @@ function renderSidebar() {
     li._checkbox.checked = isLive;
     syncVolumeControls(row.name);
     li._liveBadge.classList.toggle('hidden', !row.online);
+    // Removing a followed channel would only bring it back as a ♥ row (losing its volume)
+    li._deleteButton.classList.toggle('is-unavailable', followedNames.has(row.name));
 
     // Append in sorted order (moves existing nodes without recreating)
     dom.channelList.appendChild(li);
@@ -1192,11 +1195,13 @@ function createSidebarItem(name) {
     removeChannel(name);
   });
 
-  li.append(toggle, nameBtn, liveBadge, delBtn);
+  // Delete before the badge: appearing on hover, it takes room from the name and the badge stays put
+  li.append(toggle, nameBtn, delBtn, liveBadge);
 
   // Store refs for fast updates
   li._checkbox = checkbox;
   li._liveBadge = liveBadge;
+  li._deleteButton = delBtn;
 
   return li;
 }

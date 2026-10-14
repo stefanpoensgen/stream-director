@@ -363,27 +363,26 @@ ul {
   display: none;
 }
 
-/* Channel delete button */
+/* Channel delete button: only on the hovered row, left of the LIVE badge — the badges stay aligned */
 .channel-delete {
   flex-shrink: 0;
   width: 20px;
   height: 20px;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   font-size: 13px;
   color: var(--text-dim);
   border-radius: 4px;
-  opacity: 0;
   transition:
-    opacity var(--transition),
     color var(--transition),
     background var(--transition);
 }
 
-.channel-item:hover .channel-delete {
-  opacity: 1;
+.channel-item:is(:hover, :has(:focus-visible)) .channel-delete:not(.is-unavailable) {
+  display: flex;
 }
+
 .channel-delete:hover {
   color: var(--red);
   background: rgba(255, 82, 82, 0.15);
@@ -395,11 +394,6 @@ ul {
   margin-right: -4px;
   font-size: 11px;
   color: var(--accent-text);
-}
-
-/* Same right edge as own rows: 12px row padding + 20px delete button + 8px gap */
-.channel-item.is-followed {
-  padding-right: 40px;
 }
 
 .channel-item.is-followed .channel-name {
