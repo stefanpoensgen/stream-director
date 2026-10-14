@@ -679,11 +679,11 @@ function stepFocusVolume(direction) {
   );
 }
 
-/** Range input 0–100 % bound to a channel's volume (sidebar row and focus overlay). */
-function createVolumeSlider(name, className) {
+/** Range input 0–100 % bound to a channel's volume (focus overlay). */
+function createVolumeSlider(name) {
   const slider = document.createElement('input');
   slider.type = 'range';
-  slider.className = className;
+  slider.className = 'volume-control-slider';
   slider.min = '0';
   slider.max = '100';
   slider.step = String(VOLUME_STEP_PERCENT);
@@ -695,18 +695,11 @@ function createVolumeSlider(name, className) {
   return slider;
 }
 
-/** Update every control showing a channel's volume (sidebar slider, focus overlay). */
+/** Update the focus overlay showing a channel's volume. */
 function syncVolumeControls(name) {
   const percent = String(Math.round(getChannelVolume(name) * 100));
   const muted = isChannelMuted(name);
   const label = formatVolume(name);
-
-  const sidebarSlider = sidebarItems.get(name)?._volumeSlider;
-  if (sidebarSlider) {
-    sidebarSlider.value = percent;
-    sidebarSlider.title = `Volume ${label}`;
-    sidebarSlider.classList.toggle('is-muted', muted);
-  }
 
   const overlay = players.get(name)?.volumeControl;
   if (overlay) {
@@ -1021,7 +1014,7 @@ function createPlayerSlot(name) {
   const volumeControl = {
     element: document.createElement('div'),
     muteButton: document.createElement('button'),
-    slider: createVolumeSlider(name, 'volume-control-slider'),
+    slider: createVolumeSlider(name),
     label: document.createElement('span'),
   };
   volumeControl.element.className = 'volume-control';
@@ -1193,8 +1186,6 @@ function createSidebarItem(name) {
   liveBadge.className = 'live-badge hidden';
   liveBadge.textContent = 'LIVE';
 
-  const volumeSlider = createVolumeSlider(name, 'channel-volume');
-
   // Delete button
   const delBtn = document.createElement('button');
   delBtn.className = 'channel-delete';
@@ -1205,12 +1196,11 @@ function createSidebarItem(name) {
     removeChannel(name);
   });
 
-  li.append(toggle, nameBtn, liveBadge, volumeSlider, delBtn);
+  li.append(toggle, nameBtn, liveBadge, delBtn);
 
   // Store refs for fast updates
   li._checkbox = checkbox;
   li._liveBadge = liveBadge;
-  li._volumeSlider = volumeSlider;
 
   return li;
 }

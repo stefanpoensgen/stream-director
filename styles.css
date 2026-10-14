@@ -364,13 +364,6 @@ ul {
 }
 
 /* Channel delete button */
-.channel-volume {
-  flex-shrink: 0;
-  width: 56px;
-  accent-color: var(--accent-text);
-  cursor: pointer;
-}
-
 .channel-delete {
   flex-shrink: 0;
   width: 20px;
@@ -714,8 +707,7 @@ ul {
   cursor: pointer;
 }
 
-.volume-control-slider.is-muted,
-.channel-volume.is-muted {
+.volume-control-slider.is-muted {
   opacity: 0.4;
 }
 

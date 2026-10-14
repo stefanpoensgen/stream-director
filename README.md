@@ -70,7 +70,7 @@ Buttons in the bottom-left corner: **Menu** / **Hide menu** (channel list), **Ch
 
 Hovering the focus shows its name with the resolution actually on screen (e.g. `1080p60`), its volume slider and mute button.
 
-**Volume** is set per channel and remembered: hover the focus for its slider and mute button, use the slider in the sidebar, or press `↑`/`↓` and `M`. Muting keeps the volume; changing the volume unmutes.
+**Volume** is set per channel and remembered: hover the focus for its slider and mute button, or press `↑`/`↓` and `M`. Muting keeps the volume; changing the volume unmutes.
 
 ## Layout
 
