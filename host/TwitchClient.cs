@@ -102,7 +102,9 @@ internal sealed class TwitchClient
             ["allow_source"] = "true",
             ["player_backend"] = "mediaplayer",
             ["playlist_include_framerate"] = "true",
-            ["supported_codecs"] = "avc1",
+            // HEVC/AV1 allowed: Twitch serves above-1080p (Enhanced Broadcasting) only in these codecs.
+            // hls.js drops renditions this PC cannot decode, so H.264 remains the fallback.
+            ["supported_codecs"] = "av1,h265,h264",
             ["p"] = _random.Next(1_000_000).ToString(),
         };
         var queryString = string.Join("&", query.Select(pair => $"{pair.Key}={Uri.EscapeDataString(pair.Value)}"));
