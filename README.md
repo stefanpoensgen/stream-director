@@ -13,7 +13,6 @@ StreamDirector shows up to 14 Twitch channels in one 1920×1080 window: one larg
 - **Efficient** — tiles play in 360p, only the focus in source quality; no heavy Twitch embeds
 - **Per-channel volume** — streamers differ in loudness; each channel remembers its own volume
 - **Twitch Turbo support** — log in once and all streams play without ads
-- **Low latency mode** — optional, plays about 3–4 s closer to live (1.5–5 s behind the broadcast)
 - **Followed channels** — everything you follow on Twitch right in the list, live ones on top
 - **Live status** — see at a glance which of your channels are streaming
 - **Tiny** — a single 2 MB `.exe`, no installation
@@ -65,8 +64,6 @@ Tips for a clean picture:
 | `Escape`  | Close the import dialog                   |
 
 Buttons in the bottom-left corner: **Menu** / **Hide menu** (channel list), **Chat** (chat of the focus in a popup) and **Twitch login** / **Twitch logout**.
-
-**Low latency** (switch at the bottom of the sidebar) uses Twitch's low-latency segments like the Twitch website: about 3–4 s less delay, but less buffer — turn it off if streams stutter on your connection.
 
 Hovering the focus shows its name with the resolution actually on screen (e.g. `1080p60`), its volume slider and mute button.
 
@@ -134,21 +131,20 @@ vendor/hls.light.mjs     Vendored hls.js
 ```
 
 - **No web server:** WebView2 hands every request for `https://localhost` to the host, which serves the embedded frontend and a small API. The origin has to be `localhost` — Twitch's playlist servers reject other origins.
-- **Playback:** [hls.js](https://github.com/video-dev/hls.js) plays the Twitch HLS streams directly. Quality switches use `hls.nextLevel`, which takes effect at the next 2-second segment while the current one keeps playing — that is why focus switches are seamless. Players stay 4 s behind the newest segment (hls.js would default to 18 s for Twitch's playlists), which puts the picture about 5–9 s behind the broadcast. In low latency mode the media playlists include Twitch's `#EXT-X-TWITCH-PREFETCH` segments (still being produced); `player.js` rewrites them into regular segments (as streamlink does), which saves another 3–4 s.
+- **Playback:** [hls.js](https://github.com/video-dev/hls.js) plays the Twitch HLS streams directly. Quality switches use `hls.nextLevel`, which takes effect at the next 2-second segment while the current one keeps playing — that is why focus switches are seamless. Players stay 4 s behind the newest segment (hls.js would default to 18 s for Twitch's playlists), which puts the picture about 5–9 s behind the broadcast.
 - **Audio:** WebView2 plays sound from its own helper processes, which OBS's "Capture Audio" does not see as part of the StreamDirector window. So the players' audio goes through Web Audio into an AudioWorklet (WebView2 stays silent), is sent to the host in 10 ms chunks and played by `StreamDirector.exe` itself. Measured cost: 10–20 ms more latency than WebView2's own output.
 - **Single file:** frontend, licenses and the WebView2 assemblies are embedded resources. Only the native `WebView2Loader.dll` cannot run from memory; it is written once to `%LOCALAPPDATA%\StreamDirector\WebView2Loader\`.
 - **Followed channels:** the website login cannot read follows (Twitch blocks them on its internal API, and the token lacks `user:read:follows`). StreamDirector therefore has its own public Twitch app and asks for exactly that permission via the device code flow; `FollowsConnection.cs` keeps the tokens DPAPI-encrypted in `%LOCALAPPDATA%\StreamDirector\follows.dat` and reads the follows from the official API (Helix: `channels/followed` for all follows, cached 10 min, `streams/followed` for the live ones). Logout also removes this connection.
 - **State** (channels, volumes, layout) lives in the WebView2 profile's `localStorage`.
 
-| Endpoint                        | Purpose                                       |
-| ------------------------------- | --------------------------------------------- |
-| `GET /api/live?channels=a,b`    | Which of the channels are streaming           |
-| `GET /api/playlist/<name>.m3u8` | HLS master playlist (with Turbo token if any) |
-| `…/<name>.m3u8?lowLatency=1`    | The same with Twitch's prefetch segments      |
-| `GET /api/auth`                 | `{ "loggedIn": true/false }`                  |
-| `POST /api/logout`              | Drop the Twitch session                       |
-| `GET /api/follows`              | `{ connected, channels }` — all follows, live |
-| `POST /api/follows/connect`     | Start the Twitch device login for the follows |
+| Endpoint                        | Purpose                                                               |
+| ------------------------------- | --------------------------------------------------------------------- |
+| `GET /api/live?channels=a,b`    | Which of the channels are streaming, with title, category and viewers |
+| `GET /api/playlist/<name>.m3u8` | HLS master playlist (with Turbo token if any)                         |
+| `GET /api/auth`                 | `{ "loggedIn": true/false }`                                          |
+| `POST /api/logout`              | Drop the Twitch session                                               |
+| `GET /api/follows`              | `{ connected, channels }` — all follows, live                         |
+| `POST /api/follows/connect`     | Start the Twitch device login for the follows                         |
 
 ### Dependencies
 

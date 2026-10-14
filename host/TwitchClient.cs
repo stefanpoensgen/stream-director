@@ -83,10 +83,9 @@ internal sealed class TwitchClient
     /// <summary>
     /// Fetches the HLS master playlist of a channel.
     /// With the auth token of a Twitch Turbo account the stream comes without ads.
-    /// Low latency adds Twitch's prefetch segments (still being produced) to the media playlists.
     /// </summary>
     public async Task<(PlaylistStatus Status, string? Playlist)> FetchMasterPlaylistAsync(
-        string channel, string? authToken, bool lowLatency)
+        string channel, string? authToken)
     {
         var token = await FetchPlaybackTokenAsync(channel, authToken);
         if (token is null) return (PlaylistStatus.Offline, null);
@@ -101,7 +100,6 @@ internal sealed class TwitchClient
             // HEVC/AV1 allowed: Twitch serves above-1080p (Enhanced Broadcasting) only in these codecs.
             // hls.js drops renditions this PC cannot decode, so H.264 remains the fallback.
             ["supported_codecs"] = "av1,h265,h264",
-            ["fast_bread"] = lowLatency ? "true" : "false",
             ["p"] = _random.Next(1_000_000).ToString(),
         };
         var queryString = string.Join("&", query.Select(pair => $"{pair.Key}={Uri.EscapeDataString(pair.Value)}"));
