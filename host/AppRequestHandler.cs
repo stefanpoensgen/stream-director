@@ -17,7 +17,8 @@ namespace StreamDirector;
 internal sealed class AppRequestHandler(
     CoreWebView2Environment environment,
     TwitchClient twitch,
-    TwitchSession session)
+    TwitchSession session,
+    FollowsConnection follows)
 {
     // Twitch's playlist servers only accept requests from localhost or twitch.tv origins (403 otherwise).
     // Nothing listens on localhost: WebView2 hands every request to this handler.
@@ -38,6 +39,7 @@ internal sealed class AppRequestHandler(
     private const string AuthRoute = "/api/auth";
     private const string LogoutRoute = "/api/logout";
     private const string FollowedLiveRoute = "/api/follows/live";
+    private const string FollowsConnectRoute = "/api/follows/connect";
     private static readonly Regex PlaylistRoute = new(@"^/api/playlist/([a-z0-9_]+)\.m3u8$");
 
     private readonly JavaScriptSerializer _json = new();
@@ -68,6 +70,7 @@ internal sealed class AppRequestHandler(
         if (uri.AbsolutePath == AuthRoute) return await AuthAsync();
         if (uri.AbsolutePath == LogoutRoute) return await LogoutAsync(request);
         if (uri.AbsolutePath == FollowedLiveRoute) return await FollowedLiveAsync();
+        if (uri.AbsolutePath == FollowsConnectRoute) return await FollowsConnectAsync(request);
 
         var playlistMatch = PlaylistRoute.Match(uri.AbsolutePath);
         if (playlistMatch.Success) return await PlaylistAsync(playlistMatch.Groups[1].Value, QueryValue(uri, "lowLatency") == "1");
@@ -102,15 +105,24 @@ internal sealed class AppRequestHandler(
         };
     }
 
+    /// <summary>{ connected: false } until the follows are connected, then { connected: true, channels: [...] }.</summary>
     private async Task<CoreWebView2WebResourceResponse> FollowedLiveAsync()
     {
-        var authToken = await session.GetAuthTokenAsync();
-        if (authToken is null) return Text(401, "Not logged in");
+        if (!follows.IsConnected) return Response(200, _json.Serialize(new { connected = false }), JsonContentType);
 
-        var followed = await twitch.FetchFollowedLiveAsync(authToken);
-        if (followed is null) return Text(401, "Login not accepted");
+        var channels = await follows.FetchFollowedLiveAsync();
 
-        return Response(200, _json.Serialize(followed), JsonContentType);
+        return Response(200, _json.Serialize(new { connected = true, channels }), JsonContentType);
+    }
+
+    private async Task<CoreWebView2WebResourceResponse> FollowsConnectAsync(CoreWebView2WebResourceRequest request)
+    {
+        if (request.Method != "POST") return Text(405, "Method not allowed");
+        if (!IsFromApp(request)) return Text(403, "Forbidden");
+
+        var (userCode, verificationUri) = await follows.StartConnectAsync();
+
+        return Response(200, _json.Serialize(new { userCode, verificationUri }), JsonContentType);
     }
 
     private async Task<CoreWebView2WebResourceResponse> AuthAsync() =>
@@ -122,6 +134,7 @@ internal sealed class AppRequestHandler(
         if (!IsFromApp(request)) return Text(403, "Forbidden");
 
         await session.LogoutAsync();
+        follows.Disconnect();
 
         return Response(200, _json.Serialize(new { loggedIn = false }), JsonContentType);
     }

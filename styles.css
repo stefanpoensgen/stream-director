@@ -385,10 +385,6 @@ ul {
   border-top: 1px solid var(--border);
 }
 
-.followed.hidden {
-  display: none;
-}
-
 .followed-title {
   padding: 8px 12px 4px;
   font-size: 11px;
@@ -463,6 +459,25 @@ ul {
   margin-top: 2px;
   font-size: 11px;
   color: var(--red);
+}
+
+.followed-connect {
+  display: block;
+  margin-top: 6px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.followed-connect:hover {
+  color: var(--accent-text);
+  border-color: var(--accent-text);
 }
 
 .followed-empty {

@@ -47,7 +47,6 @@ function cacheDom() {
   dom.content = document.getElementById('content');
   dom.focusEmpty = document.getElementById('focus-empty');
   dom.channelList = document.getElementById('channel-list');
-  dom.followed = document.getElementById('followed');
   dom.followedList = document.getElementById('followed-list');
   dom.lowLatency = document.getElementById('low-latency');
   dom.sidebarToggle = document.getElementById('sidebar-toggle');
@@ -81,6 +80,7 @@ function init() {
   checkAllLive();
   setInterval(checkAllLive, LIVE_CHECK_INTERVAL_MS);
   refreshLoginState();
+  refreshFollowedLive();
   setInterval(refreshFollowedLive, LIVE_CHECK_INTERVAL_MS);
 
   if (IS_DEV) {
@@ -382,30 +382,34 @@ async function refreshLoginState() {
 
   dom.twitchLogin.textContent = isLoggedIn ? 'Logout' : 'Login';
   dom.twitchLogin.title = isLoggedIn ? 'Twitch Logout' : 'Twitch Login';
-  refreshFollowedLive();
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Followed & live (needs the Twitch login)
+// Followed & live — a separate Twitch connection with the follows
+// permission (the website login cannot read follows)
 // ═══════════════════════════════════════════════════════════════════
+
+const CONNECT_POLL_INTERVAL_MS = 3000;
+const CONNECT_POLL_DURATION_MS = 5 * 60_000;
 
 /** Followed channels that are live: { login, game, viewers }. Not persisted. */
 let followedLive = [];
+let followedConnected = false;
+/** Code to confirm on Twitch while connecting, else null. */
+let followedPendingCode = null;
 /** Why loading failed (host/Twitch message), null when the last load worked. */
 let followedError = null;
+let connectPollTimer = null;
 
 async function refreshFollowedLive() {
-  if (!isLoggedIn) {
-    followedLive = [];
-    renderFollowed();
-    return;
-  }
-
   try {
     const response = await fetch('/api/follows/live');
     if (response.ok) {
-      followedLive = await response.json();
+      const result = await response.json();
+      followedConnected = result.connected;
+      followedLive = result.channels ?? [];
       followedError = null;
+      if (followedConnected) stopConnectPolling();
     } else {
       followedError = (await response.text()) || `HTTP ${response.status}`;
     }
@@ -413,6 +417,44 @@ async function refreshFollowedLive() {
     followedError = error.message;
   }
   renderFollowed();
+}
+
+/** Starts Twitch's device login: the host opens the confirmation page in its own window. */
+async function connectFollows() {
+  try {
+    const response = await fetch('/api/follows/connect', { method: 'POST' });
+    if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+
+    const { userCode, verificationUri } = await response.json();
+    followedPendingCode = userCode;
+    followedError = null;
+    renderFollowed();
+    window.open(verificationUri, '_blank');
+    startConnectPolling();
+  } catch (error) {
+    followedError = error.message;
+    renderFollowed();
+  }
+}
+
+function startConnectPolling() {
+  stopConnectPolling();
+  const giveUpAt = Date.now() + CONNECT_POLL_DURATION_MS;
+
+  connectPollTimer = setInterval(() => {
+    if (Date.now() > giveUpAt) {
+      stopConnectPolling();
+      followedPendingCode = null;
+      renderFollowed();
+      return;
+    }
+    refreshFollowedLive();
+  }, CONNECT_POLL_INTERVAL_MS);
+}
+
+function stopConnectPolling() {
+  clearInterval(connectPollTimer);
+  connectPollTimer = null;
 }
 
 function formatViewers(viewers) {
@@ -433,10 +475,43 @@ function renderFollowed() {
     .filter((channel) => !known.has(channel.login))
     .sort((a, b) => b.viewers - a.viewers);
 
-  dom.followed.classList.toggle('hidden', !isLoggedIn);
+  if (!followedConnected) {
+    dom.followedList.replaceChildren(createFollowedConnect());
+    return;
+  }
+
   dom.followedList.replaceChildren(
     ...(entries.length > 0 ? entries.map(createFollowedItem) : [createFollowedHint()]),
   );
+}
+
+function createErrorLine(message) {
+  const line = document.createElement('span');
+  line.className = 'followed-error';
+  line.textContent = message;
+
+  return line;
+}
+
+/** Not connected yet: explain and offer the connection, or show the code being confirmed. */
+function createFollowedConnect() {
+  const li = document.createElement('li');
+  li.className = 'followed-empty';
+
+  if (followedPendingCode) {
+    li.textContent = `Confirm on Twitch (code ${followedPendingCode})…`;
+    return li;
+  }
+
+  li.textContent = 'See which channels you follow are live.';
+  const connectBtn = document.createElement('button');
+  connectBtn.className = 'followed-connect';
+  connectBtn.textContent = 'Connect';
+  connectBtn.addEventListener('click', connectFollows);
+  li.append(connectBtn);
+  if (followedError) li.append(createErrorLine(followedError));
+
+  return li;
 }
 
 /** Says why the list is empty — "nobody live" must not hide a failed request. */
@@ -446,10 +521,7 @@ function createFollowedHint() {
 
   if (followedError) {
     li.textContent = "Couldn't load followed channels";
-    const reason = document.createElement('span');
-    reason.className = 'followed-error';
-    reason.textContent = followedError;
-    li.append(reason);
+    li.append(createErrorLine(followedError));
   } else if (followedLive.length > 0) {
     li.textContent = 'All followed channels that are live are in your list';
   } else {

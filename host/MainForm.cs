@@ -20,6 +20,7 @@ internal sealed class MainForm : Form
     private const string ToggleFullscreenMessage = "toggle-fullscreen";
     private const string AudioMessagePrefix = "audio:";
     private const string TwitchLoginPath = "/login";
+    private const string TwitchActivatePath = "/activate";
     private const string GitHubUrlPrefix = "https://github.com/";
 
     // Autoplay with sound for the focused stream without a click first
@@ -29,7 +30,8 @@ internal sealed class MainForm : Form
 
     private readonly bool _isDev;
     private CoreWebView2Environment? _environment;
-    private LoginForm? _loginForm;
+    private AuthWindow? _authWindow;
+    private readonly FollowsConnection _follows = new();
     private readonly AudioRenderer _audioRenderer = new();
     private bool _isFullscreen;
     private FormWindowState _windowStateBeforeFullscreen;
@@ -90,7 +92,7 @@ internal sealed class MainForm : Form
         _webView.AllowExternalDrop = false; // a dropped file or link would replace the app page
 
         _session = new TwitchSession(core.CookieManager);
-        var requestHandler = new AppRequestHandler(environment, new TwitchClient(), _session);
+        var requestHandler = new AppRequestHandler(environment, new TwitchClient(), _session, _follows);
         core.AddWebResourceRequestedFilter($"{AppRequestHandler.Origin}/*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += requestHandler.OnWebResourceRequested;
 
@@ -146,6 +148,13 @@ internal sealed class MainForm : Form
             return;
         }
 
+        if (isTwitch && uri.AbsolutePath.StartsWith(TwitchActivatePath, StringComparison.Ordinal))
+        {
+            args.Handled = true;
+            ShowAuthWindow(args.Uri, "Connect followed channels", () => Task.FromResult(_follows.IsConnected), _ => Task.CompletedTask);
+            return;
+        }
+
         // Other Twitch popups (chat) open as WebView2 windows sharing our cookies
         if (isTwitch) return;
 
@@ -153,50 +162,57 @@ internal sealed class MainForm : Form
         if (args.Uri.StartsWith(GitHubUrlPrefix, StringComparison.Ordinal)) Process.Start(args.Uri);
     }
 
-    /// <summary>
-    /// Non-modal on purpose: a nested message loop (ShowDialog) started from a WebView2 callback
-    /// stops WebView2 from delivering further callbacks — the login page would never load.
-    /// </summary>
     private async void ShowLogin(string loginUrl)
     {
-        if (_loginForm is not null)
-        {
-            _loginForm.Activate();
-            return;
-        }
-
-        // Claim the slot before the first await — a second click must not open another window
-        var login = new LoginForm(_environment!, loginUrl, _session!, Icon);
-        _loginForm = login;
-
         try
         {
             var tokenBefore = await _session!.GetAuthTokenAsync();
-            login.FormClosed += async (_, _) => await OnLoginClosedAsync(login, tokenBefore);
-            login.Show(this);
+
+            ShowAuthWindow(loginUrl, "Twitch Login", _session.IsLoggedInAsync, async window =>
+            {
+                // Playlists requested before the login are anonymous — reload so Turbo applies to all streams
+                if (window.Completed && await _session.GetAuthTokenAsync() != tokenBefore) _webView.CoreWebView2.Reload();
+            });
         }
         catch (Exception error)
         {
-            _loginForm = null;
-            login.Dispose();
-            MessageBox.Show(this, $"Twitch login could not be opened:\n{error.Message}", Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Trace.WriteLine($"Twitch login could not be opened: {error.Message}");
         }
     }
 
-    private async Task OnLoginClosedAsync(LoginForm login, string? tokenBefore)
+    /// <summary>
+    /// Non-modal on purpose: a nested message loop (ShowDialog) started from a WebView2 callback
+    /// stops WebView2 from delivering further callbacks — the page would never load.
+    /// One window at a time: another request brings the open one to the front.
+    /// </summary>
+    private void ShowAuthWindow(string url, string title, Func<Task<bool>> isDone, Func<AuthWindow, Task> onClosed)
     {
-        if (_loginForm == login) _loginForm = null;
-        login.Dispose();
+        if (_authWindow is not null)
+        {
+            _authWindow.Activate();
+            return;
+        }
 
-        try
+        var window = new AuthWindow(_environment!, url, title, isDone, Icon);
+        _authWindow = window;
+        window.FormClosed += async (_, _) =>
         {
-            // Playlists requested before the login are anonymous — reload so Turbo applies to all streams
-            if (login.LoggedIn && await _session!.GetAuthTokenAsync() != tokenBefore) _webView.CoreWebView2.Reload();
-        }
-        catch (Exception error)
-        {
-            Trace.WriteLine($"Reload after login failed: {error.Message}");
-        }
+            if (_authWindow == window) _authWindow = null;
+
+            try
+            {
+                await onClosed(window);
+            }
+            catch (Exception error)
+            {
+                Trace.WriteLine($"Closing the Twitch window failed: {error.Message}");
+            }
+            finally
+            {
+                window.Dispose();
+            }
+        };
+        window.Show(this);
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)

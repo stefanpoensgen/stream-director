@@ -61,62 +61,6 @@ internal sealed class TwitchClient
         return liveNames;
     }
 
-    // Two ways to ask Twitch for followed channels. The first returns only live ones; when Twitch answers it
-    // with an error (seen: "service error"), the second lists the follows with their stream and is filtered here.
-    private const string FollowedLiveQuery =
-        "query { currentUser { followedLiveUsers(first: 100) { edges { node { login stream { viewersCount game { displayName } } } } } } }";
-
-    private const string FollowsQuery =
-        "query { currentUser { follows(first: 100) { edges { node { login stream { viewersCount game { displayName } } } } } } }";
-
-    /// <summary>
-    /// Channels the logged-in user follows that are live right now, or null when the token is not
-    /// accepted (expired login). Throws with the messages of both attempts when Twitch refuses both.
-    /// </summary>
-    public async Task<List<object>?> FetchFollowedLiveAsync(string authToken)
-    {
-        try
-        {
-            return await FetchFollowedAsync(FollowedLiveQuery, "followedLiveUsers", authToken);
-        }
-        catch (HttpRequestException firstError)
-        {
-            try
-            {
-                return await FetchFollowedAsync(FollowsQuery, "follows", authToken);
-            }
-            catch (HttpRequestException secondError)
-            {
-                throw new HttpRequestException($"followedLiveUsers: {firstError.Message} · follows: {secondError.Message}");
-            }
-        }
-    }
-
-    private async Task<List<object>?> FetchFollowedAsync(string query, string field, string authToken)
-    {
-        var data = await GqlAsync(new { query }, authToken);
-        if (data["currentUser"] is not IDictionary user) return null;
-
-        var edges = (user[field] as IDictionary)?["edges"] as ICollection ?? Array.Empty<object>();
-
-        return edges
-            .Cast<IDictionary>()
-            .Select(edge => (IDictionary)edge["node"])
-            .Where(node => node["stream"] is IDictionary)
-            .Select(node =>
-            {
-                var stream = (IDictionary)node["stream"];
-
-                return (object)new
-                {
-                    login = (string)node["login"],
-                    game = (stream["game"] as IDictionary)?["displayName"] as string,
-                    viewers = stream["viewersCount"] as int? ?? 0,
-                };
-            })
-            .ToList();
-    }
-
     /// <summary>
     /// Fetches the HLS master playlist of a channel.
     /// With the auth token of a Twitch Turbo account the stream comes without ads.
