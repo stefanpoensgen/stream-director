@@ -26,10 +26,16 @@ internal sealed class FollowsConnection
     private const string TokenUrl = "https://id.twitch.tv/oauth2/token";
     private const string ValidateUrl = "https://id.twitch.tv/oauth2/validate";
     private const string FollowedStreamsUrl = "https://api.twitch.tv/helix/streams/followed";
+    private const string FollowedChannelsUrl = "https://api.twitch.tv/helix/channels/followed";
+    private const int PageSize = 100;
+    private const int MaxFollowedPages = 20; // 2000 follows — a guard against endless paging
     private const string DeviceGrantType = "urn:ietf:params:oauth:grant-type:device_code";
     private const string AuthorizationPending = "authorization_pending";
     private const string SlowDown = "slow_down";
     private static readonly TimeSpan ExpiryMargin = TimeSpan.FromMinutes(1);
+
+    // Who you follow rarely changes; the live state is fetched every time
+    private static readonly TimeSpan FollowedChannelsMaxAge = TimeSpan.FromMinutes(10);
 
     private static readonly string StorePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StreamDirector", "follows.dat");
@@ -38,6 +44,8 @@ internal sealed class FollowsConnection
     private readonly JavaScriptSerializer _json = new();
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private Tokens? _tokens = LoadTokens();
+    private List<string>? _followedLogins;
+    private DateTime _followedLoginsFetchedAt;
     private CancellationTokenSource? _pendingConnect;
 
     public bool IsConnected => _tokens is not null;
@@ -60,38 +68,69 @@ internal sealed class FollowsConnection
     {
         _pendingConnect?.Cancel();
         _tokens = null;
+        _followedLogins = null;
         if (File.Exists(StorePath)) File.Delete(StorePath);
     }
 
-    /// <summary>Followed channels that are live: login, game, viewers.</summary>
-    public async Task<List<object>> FetchFollowedLiveAsync()
+    /// <summary>All followed channels: login, live and — when live — game and viewers.</summary>
+    public async Task<List<object>> FetchFollowedAsync()
     {
-        var response = await GetFollowedStreamsAsync(await GetFreshTokensAsync(forceRefresh: false));
+        var live = (await GetPagesAsync(FollowedStreamsUrl, maxPages: 1))
+            .ToDictionary(stream => (string)stream["user_login"]);
 
-        // An access token can be revoked before it expires — refresh once and retry
-        if (response.Status == HttpStatusCode.Unauthorized)
+        if (_followedLogins is null || DateTime.UtcNow - _followedLoginsFetchedAt > FollowedChannelsMaxAge)
         {
-            response = await GetFollowedStreamsAsync(await GetFreshTokensAsync(forceRefresh: true));
+            _followedLogins = (await GetPagesAsync(FollowedChannelsUrl, MaxFollowedPages))
+                .Select(channel => (string)channel["broadcaster_login"])
+                .ToList();
+            _followedLoginsFetchedAt = DateTime.UtcNow;
         }
 
-        if (response.Status != HttpStatusCode.OK) throw new HttpRequestException($"Twitch API responded {(int)response.Status}");
-
-        var streams = response.Body["data"] as ICollection ?? Array.Empty<object>();
-
-        return streams
-            .Cast<IDictionary>()
-            .Select(stream => (object)new
-            {
-                login = (string)stream["user_login"],
-                game = stream["game_name"] as string,
-                viewers = stream["viewer_count"] as int? ?? 0,
-            })
+        // A channel followed after the last list refresh can already be live — include it anyway
+        return _followedLogins
+            .Union(live.Keys)
+            .Select(login => live.TryGetValue(login, out var stream)
+                ? (object)new
+                {
+                    login,
+                    live = true,
+                    game = stream["game_name"] as string,
+                    viewers = stream["viewer_count"] as int? ?? 0,
+                }
+                : new { login, live = false, game = (string?)null, viewers = 0 })
             .ToList();
     }
 
-    private async Task<(HttpStatusCode Status, IDictionary Body)> GetFollowedStreamsAsync(Tokens tokens)
+    /// <summary>Helix list endpoint for the connected user, following the pagination cursor.</summary>
+    private async Task<List<IDictionary>> GetPagesAsync(string url, int maxPages)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"{FollowedStreamsUrl}?user_id={tokens.UserId}&first=100");
+        var items = new List<IDictionary>();
+        string? cursor = null;
+
+        for (var page = 0; page < maxPages; page++)
+        {
+            var response = await GetHelixAsync(url, cursor, await GetFreshTokensAsync(forceRefresh: false));
+
+            // An access token can be revoked before it expires — refresh once and retry
+            if (response.Status == HttpStatusCode.Unauthorized)
+            {
+                response = await GetHelixAsync(url, cursor, await GetFreshTokensAsync(forceRefresh: true));
+            }
+
+            if (response.Status != HttpStatusCode.OK) throw new HttpRequestException($"Twitch API responded {(int)response.Status}");
+
+            items.AddRange((response.Body["data"] as ICollection ?? Array.Empty<object>()).Cast<IDictionary>());
+            cursor = (response.Body["pagination"] as IDictionary)?["cursor"] as string;
+            if (string.IsNullOrEmpty(cursor)) break;
+        }
+
+        return items;
+    }
+
+    private async Task<(HttpStatusCode Status, IDictionary Body)> GetHelixAsync(string url, string? cursor, Tokens tokens)
+    {
+        var after = cursor is null ? string.Empty : $"&after={Uri.EscapeDataString(cursor)}";
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{url}?user_id={tokens.UserId}&first={PageSize}{after}");
         request.Headers.Add("Client-Id", ClientId);
         request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {tokens.AccessToken}");
 

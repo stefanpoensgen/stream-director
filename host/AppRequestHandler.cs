@@ -38,7 +38,7 @@ internal sealed class AppRequestHandler(
     private const string LiveRoute = "/api/live";
     private const string AuthRoute = "/api/auth";
     private const string LogoutRoute = "/api/logout";
-    private const string FollowedLiveRoute = "/api/follows/live";
+    private const string FollowedRoute = "/api/follows";
     private const string FollowsConnectRoute = "/api/follows/connect";
     private static readonly Regex PlaylistRoute = new(@"^/api/playlist/([a-z0-9_]+)\.m3u8$");
 
@@ -69,7 +69,7 @@ internal sealed class AppRequestHandler(
         if (uri.AbsolutePath == LiveRoute) return await LiveAsync(uri);
         if (uri.AbsolutePath == AuthRoute) return await AuthAsync();
         if (uri.AbsolutePath == LogoutRoute) return await LogoutAsync(request);
-        if (uri.AbsolutePath == FollowedLiveRoute) return await FollowedLiveAsync();
+        if (uri.AbsolutePath == FollowedRoute) return await FollowedAsync();
         if (uri.AbsolutePath == FollowsConnectRoute) return await FollowsConnectAsync(request);
 
         var playlistMatch = PlaylistRoute.Match(uri.AbsolutePath);
@@ -105,12 +105,12 @@ internal sealed class AppRequestHandler(
         };
     }
 
-    /// <summary>{ connected: false } until the follows are connected, then { connected: true, channels: [...] }.</summary>
-    private async Task<CoreWebView2WebResourceResponse> FollowedLiveAsync()
+    /// <summary>{ connected: false } until the follows are connected, then { connected: true, channels: [all follows] }.</summary>
+    private async Task<CoreWebView2WebResourceResponse> FollowedAsync()
     {
         if (!follows.IsConnected) return Response(200, _json.Serialize(new { connected = false }), JsonContentType);
 
-        var channels = await follows.FetchFollowedLiveAsync();
+        var channels = await follows.FetchFollowedAsync();
 
         return Response(200, _json.Serialize(new { connected = true, channels }), JsonContentType);
     }

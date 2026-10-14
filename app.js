@@ -391,8 +391,8 @@ async function refreshLoginState() {
 const CONNECT_POLL_INTERVAL_MS = 3000;
 const CONNECT_POLL_DURATION_MS = 5 * 60_000;
 
-/** Followed channels that are live: { login, game, viewers }. Not persisted. */
-let followedLive = [];
+/** All followed channels: { login, live, game, viewers }. Not persisted. */
+let followedChannels = [];
 let followedConnected = false;
 /** Code to confirm on Twitch while connecting, else null. */
 let followedPendingCode = null;
@@ -402,11 +402,11 @@ let connectPollTimer = null;
 
 async function refreshFollowedLive() {
   try {
-    const response = await fetch('/api/follows/live');
+    const response = await fetch('/api/follows');
     if (response.ok) {
       const result = await response.json();
       followedConnected = result.connected;
-      followedLive = result.channels ?? [];
+      followedChannels = result.channels ?? [];
       followedError = null;
       if (followedConnected) stopConnectPolling();
     } else {
@@ -468,13 +468,13 @@ function addFollowed(login, { focus }) {
   else toggleLive(login);
 }
 
-/** Followed channel that is live but not in the own list yet: same row, marked with ♥. */
-function createFollowedRow({ login, game, viewers }) {
+/** Followed channel that is not in the own list yet: same row, marked with ♥. */
+function createFollowedRow({ login, live, game, viewers }) {
   const li = document.createElement('li');
   li.className = 'channel-item is-followed';
-  li.title = ['Followed on Twitch', game, `${formatViewers(viewers)} viewers`]
-    .filter(Boolean)
-    .join(' · ');
+  li.title = live
+    ? ['Followed on Twitch', game, `${formatViewers(viewers)} viewers`].filter(Boolean).join(' · ')
+    : 'Followed on Twitch';
 
   const toggle = document.createElement('label');
   toggle.className = 'live-toggle';
@@ -496,11 +496,13 @@ function createFollowedRow({ login, game, viewers }) {
   nameBtn.textContent = login;
   nameBtn.addEventListener('click', () => addFollowed(login, { focus: true }));
 
-  const liveBadge = document.createElement('span');
-  liveBadge.className = 'live-badge';
-  liveBadge.textContent = 'LIVE';
-
-  li.append(toggle, mark, nameBtn, liveBadge);
+  li.append(toggle, mark, nameBtn);
+  if (live) {
+    const liveBadge = document.createElement('span');
+    liveBadge.className = 'live-badge';
+    liveBadge.textContent = 'LIVE';
+    li.append(liveBadge);
+  }
 
   return li;
 }
@@ -533,7 +535,7 @@ function createFollowedStatusRow() {
 
   const connectBtn = document.createElement('button');
   connectBtn.className = 'followed-connect';
-  connectBtn.textContent = '\u2665 Show followed channels that are live';
+  connectBtn.textContent = '\u2665 Show followed channels';
   connectBtn.addEventListener('click', connectFollows);
   li.append(connectBtn);
   if (followedError) li.append(createErrorLine(followedError));
@@ -977,19 +979,21 @@ let followedRows = [];
 function renderSidebar() {
   const ownNames = new Set(state.channels.map((c) => c.name));
   const followedOnly = followedConnected
-    ? followedLive.filter((channel) => !ownNames.has(channel.login))
+    ? followedChannels.filter((channel) => !ownNames.has(channel.login))
     : [];
 
-  // One list: own channels plus followed channels that are live but not in the list yet.
-  // Sort: online (streaming) first, then active players, then rest — alpha within each
+  // One list: own channels plus followed channels that are not in the list yet.
+  // Sort: online (streaming) first, then active players, then own before followed
+  // (own offline channels must not drown in many follows) — alpha within each
   const rows = [
     ...state.channels.map((c) => ({ name: c.name, online: onlineSet.has(c.name), followed: null })),
-    ...followedOnly.map((f) => ({ name: f.login, online: true, followed: f })),
+    ...followedOnly.map((f) => ({ name: f.login, online: f.live, followed: f })),
   ].sort((a, b) => {
     if (a.online !== b.online) return a.online ? -1 : 1;
     const aLive = state.liveSet.has(a.name);
     const bLive = state.liveSet.has(b.name);
     if (aLive !== bLive) return aLive ? -1 : 1;
+    if (!a.followed !== !b.followed) return a.followed ? 1 : -1;
     return a.name.localeCompare(b.name);
   });
 

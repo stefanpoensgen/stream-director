@@ -14,7 +14,7 @@ StreamDirector shows up to 14 Twitch channels in one 1920×1080 window: one larg
 - **Per-channel volume** — streamers differ in loudness; each channel remembers its own volume
 - **Twitch Turbo support** — log in once and all streams play without ads
 - **Low latency mode** — optional, plays about 3–4 s closer to live (1.5–5 s behind the broadcast)
-- **Followed & live** — the channels you follow that are live right now, one click away
+- **Followed channels** — everything you follow on Twitch right in the list, live ones on top
 - **Live status** — see at a glance which of your channels are streaming
 - **Tiny** — a single 2 MB `.exe`, no installation
 
@@ -31,7 +31,7 @@ Download `StreamDirector-<version>.exe` from the [latest release](https://github
 2. Add channels: type a name and press **+**, or use **Import** to paste a whole list (one per line). Ready-made lists for upcoming events are in the [Discussions](https://github.com/stefanpoensgen/stream-director/discussions).
 3. Switch channels on with the toggle next to their name. **LIVE** marks channels that are streaming right now.
 4. Click a channel (in the sidebar or a tile) to put it in focus — the focus is the only stream with sound.
-5. Channels you follow on Twitch that are live right now appear in the same list, marked with **♥** (hover for game and viewers). Click **♥ Show followed channels that are live** at the end of the list once and confirm on Twitch — StreamDirector asks only for permission to read your follows. Switch a ♥ channel on to add and start it, or click its name to add it and put it in focus.
+5. The channels you follow on Twitch appear in the same list, marked with **♥** — live ones on top (hover for game and viewers). Click **♥ Show followed channels** at the end of the list once and confirm on Twitch — StreamDirector asks only for permission to read your follows. Switch a ♥ channel on to add and start it, or click its name to add it and put it in focus.
 6. Hide the sidebar again with `S` before you go live.
 
 ## Using it with OBS
@@ -131,7 +131,7 @@ vendor/hls.light.mjs     Vendored hls.js
 - **Playback:** [hls.js](https://github.com/video-dev/hls.js) plays the Twitch HLS streams directly. Quality switches use `hls.nextLevel`, which takes effect at the next 2-second segment while the current one keeps playing — that is why focus switches are seamless. Players stay 4 s behind the newest segment (hls.js would default to 18 s for Twitch's playlists), which puts the picture about 5–9 s behind the broadcast. In low latency mode the media playlists include Twitch's `#EXT-X-TWITCH-PREFETCH` segments (still being produced); `player.js` rewrites them into regular segments (as streamlink does), which saves another 3–4 s.
 - **Audio:** WebView2 plays sound from its own helper processes, which OBS's "Capture Audio" does not see as part of the StreamDirector window. So the players' audio goes through Web Audio into an AudioWorklet (WebView2 stays silent), is sent to the host in 10 ms chunks and played by `StreamDirector.exe` itself. Measured cost: 10–20 ms more latency than WebView2's own output.
 - **Single file:** frontend, licenses and the WebView2 assemblies are embedded resources. Only the native `WebView2Loader.dll` cannot run from memory; it is written once to `%LOCALAPPDATA%\StreamDirector\WebView2Loader\`.
-- **Followed channels:** the website login cannot read follows (Twitch blocks them on its internal API, and the token lacks `user:read:follows`). StreamDirector therefore has its own public Twitch app and asks for exactly that permission via the device code flow; `FollowsConnection.cs` keeps the tokens DPAPI-encrypted in `%LOCALAPPDATA%\StreamDirector\follows.dat` and reads the follows from the official API (Helix). Logout also removes this connection.
+- **Followed channels:** the website login cannot read follows (Twitch blocks them on its internal API, and the token lacks `user:read:follows`). StreamDirector therefore has its own public Twitch app and asks for exactly that permission via the device code flow; `FollowsConnection.cs` keeps the tokens DPAPI-encrypted in `%LOCALAPPDATA%\StreamDirector\follows.dat` and reads the follows from the official API (Helix: `channels/followed` for all follows, cached 10 min, `streams/followed` for the live ones). Logout also removes this connection.
 - **State** (channels, volumes, layout) lives in the WebView2 profile's `localStorage`.
 
 | Endpoint                        | Purpose                                       |
@@ -141,7 +141,7 @@ vendor/hls.light.mjs     Vendored hls.js
 | `…/<name>.m3u8?lowLatency=1`    | The same with Twitch's prefetch segments      |
 | `GET /api/auth`                 | `{ "loggedIn": true/false }`                  |
 | `POST /api/logout`              | Drop the Twitch session                       |
-| `GET /api/follows/live`         | `{ connected, channels }` — followed & live   |
+| `GET /api/follows`              | `{ connected, channels }` — all follows, live |
 | `POST /api/follows/connect`     | Start the Twitch device login for the follows |
 
 ### Dependencies
