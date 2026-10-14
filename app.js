@@ -2,6 +2,7 @@
 // StreamDirector — Multiview Twitch Dashboard
 // ═══════════════════════════════════════════════════════════════════
 
+import { createAudioRelay } from './audio-relay.js';
 import { createPlayer } from './player.js';
 
 // ─── Configuration ──────────────────────────────────────────────────
@@ -28,6 +29,9 @@ const state = {
 };
 
 // ─── Player Registry ────────────────────────────────────────────────
+// One audio relay for all players, created in init() (null outside the WebView2 host)
+let audioRelay = null;
+
 // Maps channel name → { container, player, volumeOsd, volumeControl, qualityBadge: HTMLElement|null }
 const players = new Map();
 
@@ -61,6 +65,7 @@ function cacheDom() {
 
 function init() {
   cacheDom();
+  audioRelay = createAudioRelay();
 
   restoreState();
   applySidebarState();
@@ -740,6 +745,7 @@ function createPlayerSlot(name) {
   dom.content.appendChild(container);
 
   const player = createPlayer(name, container, {
+    audioRelay,
     onOnline() {
       badge.classList.add('hidden');
       onlineSet.add(name);

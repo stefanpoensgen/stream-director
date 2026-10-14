@@ -18,6 +18,7 @@ internal sealed class MainForm : Form
     private const int ContentWidth = 1920;
     private const int ContentHeight = 1080;
     private const string ToggleFullscreenMessage = "toggle-fullscreen";
+    private const string AudioMessagePrefix = "audio:";
     private const string TwitchLoginPath = "/login";
     private const string GitHubUrlPrefix = "https://github.com/";
 
@@ -29,6 +30,7 @@ internal sealed class MainForm : Form
     private readonly bool _isDev;
     private CoreWebView2Environment? _environment;
     private LoginForm? _loginForm;
+    private readonly AudioRenderer _audioRenderer = new();
     private bool _isFullscreen;
     private FormWindowState _windowStateBeforeFullscreen;
     private TwitchSession? _session;
@@ -44,6 +46,12 @@ internal sealed class MainForm : Form
         BackColor = BackgroundColor;
         ClientSize = new Size(LogicalToDeviceUnits(ContentWidth), LogicalToDeviceUnits(ContentHeight));
         Controls.Add(_webView);
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _audioRenderer.Dispose();
+        base.OnFormClosed(e);
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -203,6 +211,12 @@ internal sealed class MainForm : Form
         catch (ArgumentException)
         {
             return; // not a string message — nothing the host understands
+        }
+
+        if (message.StartsWith(AudioMessagePrefix, StringComparison.Ordinal))
+        {
+            _audioRenderer.Enqueue(Convert.FromBase64String(message.Substring(AudioMessagePrefix.Length)));
+            return;
         }
 
         if (message == ToggleFullscreenMessage) ToggleFullscreen();

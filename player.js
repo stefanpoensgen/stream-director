@@ -35,19 +35,51 @@ function findTileLevel(levels) {
 }
 
 /**
+ * Where a player's sound goes: through the host's audio relay when there is one
+ * (see audio-relay.js), otherwise out of the video element itself.
+ */
+function createAudioOutput(video, audioRelay) {
+  if (!audioRelay) {
+    return {
+      apply(isAudible, volume) {
+        video.muted = !isAudible;
+        video.volume = volume;
+      },
+      disconnect() {},
+    };
+  }
+
+  const route = audioRelay.connect(video);
+  video.muted = false; // the relay's gain decides what is heard
+
+  return {
+    apply(isAudible, volume) {
+      route.setGain(isAudible ? volume : 0);
+    },
+    disconnect: route.disconnect,
+  };
+}
+
+/**
  * Creates a muted tile player inside `container`.
  * `onOnline` / `onOffline` report whether the channel is streaming,
  * `onUnavailable` that it streams but cannot be played (subscriber-only, geo-blocked).
  */
-export function createPlayer(channel, container, { onOnline, onOffline, onUnavailable }) {
+export function createPlayer(
+  channel,
+  container,
+  { audioRelay, onOnline, onOffline, onUnavailable },
+) {
   const video = document.createElement('video');
   video.muted = true;
   video.autoplay = true;
   container.append(video);
+  const audio = createAudioOutput(video, audioRelay);
 
   let hls = null;
   let levels = null;
   let isFocused = false;
+  let volume = 1;
   let retryTimer = null;
   let isDestroyed = false;
 
@@ -112,13 +144,14 @@ export function createPlayer(channel, container, { onOnline, onOffline, onUnavai
       if (focused === isFocused) return;
 
       isFocused = focused;
-      video.muted = !focused;
+      audio.apply(isFocused, volume);
       if (hls && levels) hls.nextLevel = desiredLevel();
     },
 
     /** Volume 0–1; only audible while focused (tiles stay muted). */
-    setVolume(volume) {
-      video.volume = volume;
+    setVolume(newVolume) {
+      volume = newVolume;
+      audio.apply(isFocused, volume);
     },
 
     /** Currently displayed rendition, e.g. "1080p60" (dev badge). */
@@ -135,6 +168,7 @@ export function createPlayer(channel, container, { onOnline, onOffline, onUnavai
       clearTimeout(retryTimer);
       video.removeEventListener('ended', onEnded);
       stop();
+      audio.disconnect();
       video.remove();
     },
   };

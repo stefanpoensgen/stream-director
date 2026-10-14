@@ -38,7 +38,7 @@ Download `StreamDirector-<version>.exe` from the [latest release](https://github
 3. Window: **[StreamDirector.exe]: StreamDirector**.
 4. Capture Method: **Windows 10 (1903 and up)**. Other methods may show a black picture.
 5. Keep **Client Area** enabled (default) — the title bar is then not part of the stream.
-6. Sound: enable **Capture Audio** in the Window Capture source, or add a separate **Application Audio Capture** source for StreamDirector. Only the focus stream is audible.
+6. Sound: enable **Capture Audio** in the Window Capture source. You get exactly the focus stream — no system sounds, Discord or other apps.
 7. The window content is exactly 1920×1080, so it fills a 1080p canvas without scaling.
 
 Tips for a clean picture:
@@ -80,6 +80,7 @@ At most 14 streams play at the same time. Switching on one more stops the one yo
 
 | Problem                                   | Solution                                                                                                                                                                                      |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No sound in OBS                           | Enable **Capture Audio** in the Window Capture source, and check that the focus is not at 0 % volume.                                                                                         |
 | Black picture in OBS                      | Set the capture method to **Windows 10 (1903 and up)** and make sure the window is not minimized.                                                                                             |
 | A tile shows **OFFLINE**                  | The channel is not streaming. The player retries every 30 seconds and starts automatically.                                                                                                   |
 | A tile shows **UNAVAILABLE**              | The channel is live but cannot be played (subscriber-only or geo-blocked).                                                                                                                    |
@@ -109,16 +110,20 @@ host/                    C# WebView2 host
   TwitchClient.cs        Twitch API client (live status, HLS playlists)
   TwitchSession.cs       Login state (WebView2 cookies), logout
   LoginForm.cs           Twitch login window
+  AudioRenderer.cs       Plays the relayed player audio from StreamDirector.exe (WASAPI)
   EmbeddedFiles.cs       Single-file support (embedded frontend, WebView2 assemblies and loader)
   NativeMethods.cs       Win32 helpers (icon, dark title bar)
 index.html, app.js       Frontend: state, layout, players, volume, hotkeys
 player.js                HLS player per channel (360p tile / source focus)
+audio-relay.js           Routes player audio via Web Audio to the host
+audio-tap.js             AudioWorklet that hands out 10 ms PCM chunks
 styles.css               Dark theme, CSS grid layout
 vendor/hls.light.mjs     Vendored hls.js
 ```
 
 - **No web server:** WebView2 hands every request for `https://localhost` to the host, which serves the embedded frontend and a small API. The origin has to be `localhost` — Twitch's playlist servers reject other origins.
 - **Playback:** [hls.js](https://github.com/video-dev/hls.js) plays the Twitch HLS streams directly. Quality switches use `hls.nextLevel`, which takes effect at the next 2-second segment while the current one keeps playing — that is why focus switches are seamless.
+- **Audio:** WebView2 plays sound from its own helper processes, which OBS's "Capture Audio" does not see as part of the StreamDirector window. So the players' audio goes through Web Audio into an AudioWorklet (WebView2 stays silent), is sent to the host in 10 ms chunks and played by `StreamDirector.exe` itself. Measured cost: 10–20 ms more latency than WebView2's own output.
 - **Single file:** frontend, licenses and the WebView2 assemblies are embedded resources. Only the native `WebView2Loader.dll` cannot run from memory; it is written once to `%LOCALAPPDATA%\StreamDirector\WebView2Loader\`.
 - **State** (channels, volumes, layout) lives in the WebView2 profile's `localStorage`.
 
