@@ -49,6 +49,7 @@ Tips for a clean picture:
 - Hide the sidebar (`S`) — it is part of the captured picture.
 - Move the mouse away from the window: hovering the focus shows its name and volume slider, and these are captured too.
 - `F11` switches to borderless fullscreen on the current monitor if you prefer that over a window.
+- Resized the window by accident? **Reset window to Full HD** at the bottom of the sidebar brings it back to exactly 1920×1080.
 
 ## Controls
 

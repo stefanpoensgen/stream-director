@@ -11,6 +11,7 @@ const DEFAULT_MAX_PLAYERS = 14;
 const LIVE_CHECK_INTERVAL_MS = 60_000;
 const QUALITY_BADGE_INTERVAL_MS = 2000;
 const RESOLUTION_REFRESH_MS = 1000;
+const RESET_WINDOW_MESSAGE = 'reset-window-size';
 // Content wider than this (e.g. 3440×1440 fullscreen) puts the tiles left and right of the focus
 const WIDE_ASPECT_RATIO = 2.1;
 const VIDEO_ASPECT_RATIO = 16 / 9;
@@ -62,6 +63,7 @@ function cacheDom() {
   dom.branding = document.getElementById('branding');
   dom.chatBtn = document.getElementById('chat-btn');
   dom.importBtn = document.getElementById('import-btn');
+  dom.resetWindow = document.getElementById('reset-window');
   dom.importOverlay = document.getElementById('import-overlay');
   dom.importTextarea = document.getElementById('import-textarea');
   dom.importConfirm = document.getElementById('import-confirm');
@@ -1237,6 +1239,14 @@ function bindEvents() {
   dom.chatBtn.addEventListener('click', openChat);
   dom.lowLatency.checked = state.lowLatency;
   dom.lowLatency.addEventListener('change', () => setLowLatency(dom.lowLatency.checked));
+
+  // Reset window size — handled by the host window, so only offered inside it
+  const host = window.chrome?.webview;
+  dom.resetWindow.classList.toggle('hidden', !host);
+  dom.resetWindow.addEventListener('mouseenter', () => {
+    dom.resetWindow.title = `Back to a 1920×1080 window, e.g. after resizing (now ${innerWidth}×${innerHeight})`;
+  });
+  dom.resetWindow.addEventListener('click', () => host.postMessage(RESET_WINDOW_MESSAGE));
 
   // Import
   dom.importBtn.addEventListener('click', showImportModal);

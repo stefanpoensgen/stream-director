@@ -18,6 +18,7 @@ internal sealed class MainForm : Form
     private const int ContentWidth = 1920;
     private const int ContentHeight = 1080;
     private const string ToggleFullscreenMessage = "toggle-fullscreen";
+    private const string ResetWindowSizeMessage = "reset-window-size";
     private const string AudioMessagePrefix = "audio:";
     private const string TwitchLoginPath = "/login";
     private const string TwitchActivatePath = "/activate";
@@ -249,6 +250,7 @@ internal sealed class MainForm : Form
         }
 
         if (message == ToggleFullscreenMessage) ToggleFullscreen();
+        if (message == ResetWindowSizeMessage) ResetWindowSize();
     }
 
     /// <summary>
@@ -273,5 +275,18 @@ internal sealed class MainForm : Form
         }
 
         _isFullscreen = !_isFullscreen;
+    }
+
+    /// <summary>Back to a 1920×1080 content area (what OBS scenes are made for), centered on the current screen.</summary>
+    private void ResetWindowSize()
+    {
+        if (_isFullscreen) ToggleFullscreen();
+        WindowState = FormWindowState.Normal;
+        ClientSize = new Size(LogicalToDeviceUnits(ContentWidth), LogicalToDeviceUnits(ContentHeight));
+
+        var area = Screen.FromControl(this).WorkingArea;
+        Location = new Point(
+            area.Left + Math.Max(0, (area.Width - Width) / 2),
+            area.Top + Math.Max(0, (area.Height - Height) / 2));
     }
 }

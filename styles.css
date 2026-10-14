@@ -460,7 +460,7 @@ ul {
   gap: 6px;
 }
 
-.import-btn {
+.footer-btn {
   width: 100%;
   padding: 6px 0;
   background: var(--bg);
@@ -474,7 +474,11 @@ ul {
     background var(--transition);
 }
 
-.import-btn:hover {
+.footer-btn.hidden {
+  display: none;
+}
+
+.footer-btn:hover {
   color: var(--accent-text);
   background: var(--surface-hover);
 }
