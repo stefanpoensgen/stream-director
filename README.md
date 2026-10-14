@@ -44,7 +44,7 @@ The app runs as a frameless window. Controls are in the bottom-left corner:
 
 - **Drag** the logo area to move the window
 - **Menu** toggles the sidebar
-- **Login** opens Twitch login — the login is used for all streams, so a Twitch Turbo subscription removes ads everywhere
+- **Login** opens Twitch login — the login is used for all streams, so a Twitch Turbo subscription removes ads everywhere. Once logged in, the button turns into **Logout**
 - **Chat** opens the chat of the focused channel in a popup
 - **Close** (✕) closes the app
 

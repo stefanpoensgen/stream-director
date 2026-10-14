@@ -12,6 +12,7 @@ const QUALITY_BADGE_INTERVAL_MS = 2000;
 const DEFAULT_VOLUME = 1;
 const VOLUME_STEP_PERCENT = 5;
 const VOLUME_OSD_DURATION_MS = 1200;
+const TWITCH_LOGIN_URL = 'https://www.twitch.tv/login';
 const IS_DEV = new URL(location.href).searchParams.has('dev');
 
 // ─── Application State ─────────────────────────────────────────────
@@ -69,6 +70,7 @@ function init() {
 
   checkAllLive();
   setInterval(checkAllLive, LIVE_CHECK_INTERVAL_MS);
+  refreshLoginState();
 
   if (IS_DEV) {
     setInterval(updateQualityBadges, QUALITY_BADGE_INTERVAL_MS);
@@ -324,6 +326,38 @@ function showImportModal() {
 
 function hideImportModal() {
   dom.importOverlay.classList.add('hidden');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Twitch Login (the host keeps the session; Turbo removes ads on all streams)
+// ═══════════════════════════════════════════════════════════════════
+
+let isLoggedIn = false;
+
+/** Ask the host whether a Twitch login exists and label the button accordingly. */
+async function refreshLoginState() {
+  try {
+    const response = await fetch('/api/auth');
+    if (!response.ok) return;
+
+    ({ loggedIn: isLoggedIn } = await response.json());
+  } catch {
+    return;
+  }
+
+  dom.twitchLogin.textContent = isLoggedIn ? 'Logout' : 'Login';
+  dom.twitchLogin.title = isLoggedIn ? 'Twitch Logout' : 'Twitch Login';
+}
+
+/** Login opens Twitch's login page; logout drops the session and restarts the streams anonymously. */
+async function toggleLogin() {
+  if (!isLoggedIn) {
+    window.open(TWITCH_LOGIN_URL, '_blank');
+    return;
+  }
+
+  await fetch('/api/logout', { method: 'POST' });
+  location.reload();
 }
 
 /** Open or update Twitch chat popup for the currently focused channel. */
@@ -844,9 +878,7 @@ function bindEvents() {
 
   // Sidebar toggle
   dom.sidebarToggle.addEventListener('click', toggleSidebar);
-  dom.twitchLogin.addEventListener('click', () => {
-    window.open('https://www.twitch.tv/login', '_blank');
-  });
+  dom.twitchLogin.addEventListener('click', toggleLogin);
   dom.chatBtn.addEventListener('click', openChat);
   dom.closeBtn.addEventListener('click', () => window.close());
 

@@ -18,7 +18,7 @@ internal sealed class AppRequestHandler(
     CoreWebView2Environment environment,
     string webRoot,
     TwitchClient twitch,
-    Func<Task<string?>> getAuthToken)
+    TwitchSession session)
 {
     // Twitch's playlist servers only accept requests from localhost or twitch.tv origins (403 otherwise).
     // Nothing listens on localhost: WebView2 hands every request to this handler.
@@ -39,6 +39,8 @@ internal sealed class AppRequestHandler(
     private const string JsonContentType = "application/json";
     private const string PlaylistContentType = "application/vnd.apple.mpegurl";
     private const string LiveRoute = "/api/live";
+    private const string AuthRoute = "/api/auth";
+    private const string LogoutRoute = "/api/logout";
     private static readonly Regex PlaylistRoute = new(@"^/api/playlist/([a-z0-9_]+)\.m3u8$");
 
     private readonly JavaScriptSerializer _json = new();
@@ -49,7 +51,7 @@ internal sealed class AppRequestHandler(
 
         try
         {
-            args.Response = await RouteAsync(new Uri(args.Request.Uri));
+            args.Response = await RouteAsync(new Uri(args.Request.Uri), args.Request.Method);
         }
         catch (Exception error)
         {
@@ -62,9 +64,11 @@ internal sealed class AppRequestHandler(
         }
     }
 
-    private async Task<CoreWebView2WebResourceResponse> RouteAsync(Uri uri)
+    private async Task<CoreWebView2WebResourceResponse> RouteAsync(Uri uri, string method)
     {
         if (uri.AbsolutePath == LiveRoute) return await LiveAsync(uri);
+        if (uri.AbsolutePath == AuthRoute) return await AuthAsync();
+        if (uri.AbsolutePath == LogoutRoute) return await LogoutAsync(method);
 
         var playlistMatch = PlaylistRoute.Match(uri.AbsolutePath);
         if (playlistMatch.Success) return await PlaylistAsync(playlistMatch.Groups[1].Value);
@@ -88,10 +92,22 @@ internal sealed class AppRequestHandler(
     {
         if (!TwitchClient.IsValidChannelName(channel)) return Text(400, "Invalid channel name");
 
-        var playlist = await twitch.FetchMasterPlaylistAsync(channel, await getAuthToken());
+        var playlist = await twitch.FetchMasterPlaylistAsync(channel, await session.GetAuthTokenAsync());
         if (playlist is null) return Text(404, "Channel offline");
 
         return Response(200, playlist, PlaylistContentType);
+    }
+
+    private async Task<CoreWebView2WebResourceResponse> AuthAsync() =>
+        Response(200, _json.Serialize(new { loggedIn = await session.IsLoggedInAsync() }), JsonContentType);
+
+    private async Task<CoreWebView2WebResourceResponse> LogoutAsync(string method)
+    {
+        if (method != "POST") return Text(405, "Method not allowed");
+
+        await session.LogoutAsync();
+
+        return Response(200, _json.Serialize(new { loggedIn = false }), JsonContentType);
     }
 
     private CoreWebView2WebResourceResponse Static(string path)

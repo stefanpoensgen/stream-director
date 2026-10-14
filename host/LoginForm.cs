@@ -17,16 +17,16 @@ internal sealed class LoginForm : Form
 
     private readonly CoreWebView2Environment _environment;
     private readonly string _loginUrl;
-    private readonly Func<Task<bool>> _isLoggedIn;
+    private readonly TwitchSession _session;
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
 
     public bool LoggedIn { get; private set; }
 
-    public LoginForm(CoreWebView2Environment environment, string loginUrl, Func<Task<bool>> isLoggedIn, Icon icon)
+    public LoginForm(CoreWebView2Environment environment, string loginUrl, TwitchSession session, Icon icon)
     {
         _environment = environment;
         _loginUrl = loginUrl;
-        _isLoggedIn = isLoggedIn;
+        _session = session;
 
         Text = "Twitch Login";
         Icon = icon;
@@ -58,7 +58,7 @@ internal sealed class LoginForm : Form
 
     private async Task CloseWhenLoggedInAsync()
     {
-        if (LoggedIn || !await _isLoggedIn()) return;
+        if (LoggedIn || !await _session.IsLoggedInAsync()) return;
 
         LoggedIn = true;
         Close();

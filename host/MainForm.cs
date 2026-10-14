@@ -4,7 +4,6 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -18,8 +17,6 @@ internal sealed class MainForm : Form
     private const int ContentWidth = 1920;
     private const int ContentHeight = 1080;
     private const string ToggleFullscreenMessage = "toggle-fullscreen";
-    private const string TwitchUrl = "https://www.twitch.tv";
-    private const string TwitchAuthCookie = "auth-token";
     private const string TwitchLoginPath = "/login";
     private const string GitHubUrlPrefix = "https://github.com/";
 
@@ -31,6 +28,7 @@ internal sealed class MainForm : Form
     private readonly bool _isDev;
     private CoreWebView2Environment? _environment;
     private LoginForm? _loginForm;
+    private TwitchSession? _session;
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = BackgroundColor };
 
     public MainForm(bool isDev)
@@ -75,7 +73,8 @@ internal sealed class MainForm : Form
         core.Settings.AreDevToolsEnabled = _isDev;
 
         var webRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot");
-        var requestHandler = new AppRequestHandler(environment, webRoot, new TwitchClient(), GetTwitchAuthTokenAsync);
+        _session = new TwitchSession(core.CookieManager);
+        var requestHandler = new AppRequestHandler(environment, webRoot, new TwitchClient(), _session);
         core.AddWebResourceRequestedFilter($"{AppRequestHandler.Origin}/*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += requestHandler.OnWebResourceRequested;
 
@@ -104,14 +103,6 @@ internal sealed class MainForm : Form
               window.chrome.webview.postMessage('{{ToggleFullscreenMessage}}');
             });
             """;
-    }
-
-    /// <summary>Auth token of the Twitch login (shared cookie store), null when logged out.</summary>
-    private async Task<string?> GetTwitchAuthTokenAsync()
-    {
-        var cookies = await _webView.CoreWebView2.CookieManager.GetCookiesAsync(TwitchUrl);
-
-        return cookies.FirstOrDefault(cookie => cookie.Name == TwitchAuthCookie)?.Value;
     }
 
     private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs args)
@@ -145,8 +136,8 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var tokenBefore = await GetTwitchAuthTokenAsync();
-        var login = new LoginForm(_environment!, loginUrl, async () => await GetTwitchAuthTokenAsync() is not null, Icon);
+        var tokenBefore = await _session!.GetAuthTokenAsync();
+        var login = new LoginForm(_environment!, loginUrl, _session, Icon);
         _loginForm = login;
 
         login.FormClosed += async (_, _) =>
@@ -155,7 +146,7 @@ internal sealed class MainForm : Form
             login.Dispose();
 
             // Playlists requested before the login are anonymous — reload so Turbo applies to all streams
-            if (login.LoggedIn && await GetTwitchAuthTokenAsync() != tokenBefore) _webView.CoreWebView2.Reload();
+            if (login.LoggedIn && await _session.GetAuthTokenAsync() != tokenBefore) _webView.CoreWebView2.Reload();
         };
         login.Show(this);
     }
