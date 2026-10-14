@@ -47,7 +47,6 @@ function cacheDom() {
   dom.content = document.getElementById('content');
   dom.focusEmpty = document.getElementById('focus-empty');
   dom.channelList = document.getElementById('channel-list');
-  dom.followedList = document.getElementById('followed-list');
   dom.lowLatency = document.getElementById('low-latency');
   dom.sidebarToggle = document.getElementById('sidebar-toggle');
   dom.addChannelForm = document.getElementById('add-channel-form');
@@ -416,7 +415,7 @@ async function refreshFollowedLive() {
   } catch (error) {
     followedError = error.message;
   }
-  renderFollowed();
+  renderSidebar();
 }
 
 /** Starts Twitch's device login: the host opens the confirmation page in its own window. */
@@ -428,12 +427,12 @@ async function connectFollows() {
     const { userCode, verificationUri } = await response.json();
     followedPendingCode = userCode;
     followedError = null;
-    renderFollowed();
+    renderSidebar();
     window.open(verificationUri, '_blank');
     startConnectPolling();
   } catch (error) {
     followedError = error.message;
-    renderFollowed();
+    renderSidebar();
   }
 }
 
@@ -445,7 +444,7 @@ function startConnectPolling() {
     if (Date.now() > giveUpAt) {
       stopConnectPolling();
       followedPendingCode = null;
-      renderFollowed();
+      renderSidebar();
       return;
     }
     refreshFollowedLive();
@@ -461,28 +460,49 @@ function formatViewers(viewers) {
   return viewers >= 1000 ? `${(viewers / 1000).toFixed(1)}k` : String(viewers);
 }
 
-/** Adds a followed channel to the own list; optionally puts it in focus right away. */
+/** Takes a followed channel into the own list and starts it — in focus or as a tile. */
 function addFollowed(login, { focus }) {
-  addChannel(login);
+  if (!addChannel(login)) return;
+
   if (focus) setFocus(login);
-  renderFollowed();
+  else toggleLive(login);
 }
 
-/** Only channels that are not in the own list yet — those are listed above already. */
-function renderFollowed() {
-  const known = new Set(state.channels.map((c) => c.name));
-  const entries = followedLive
-    .filter((channel) => !known.has(channel.login))
-    .sort((a, b) => b.viewers - a.viewers);
+/** Followed channel that is live but not in the own list yet: same row, marked with ♥. */
+function createFollowedRow({ login, game, viewers }) {
+  const li = document.createElement('li');
+  li.className = 'channel-item is-followed';
+  li.title = ['Followed on Twitch', game, `${formatViewers(viewers)} viewers`]
+    .filter(Boolean)
+    .join(' · ');
 
-  if (!followedConnected) {
-    dom.followedList.replaceChildren(createFollowedConnect());
-    return;
-  }
+  const toggle = document.createElement('label');
+  toggle.className = 'live-toggle';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.addEventListener('change', () => addFollowed(login, { focus: false }));
+  const track = document.createElement('span');
+  track.className = 'toggle-track';
+  const thumb = document.createElement('span');
+  thumb.className = 'toggle-thumb';
+  toggle.append(checkbox, track, thumb);
 
-  dom.followedList.replaceChildren(
-    ...(entries.length > 0 ? entries.map(createFollowedItem) : [createFollowedHint()]),
-  );
+  const mark = document.createElement('span');
+  mark.className = 'followed-mark';
+  mark.textContent = '\u2665';
+
+  const nameBtn = document.createElement('button');
+  nameBtn.className = 'channel-name';
+  nameBtn.textContent = login;
+  nameBtn.addEventListener('click', () => addFollowed(login, { focus: true }));
+
+  const liveBadge = document.createElement('span');
+  liveBadge.className = 'live-badge';
+  liveBadge.textContent = 'LIVE';
+
+  li.append(toggle, mark, nameBtn, liveBadge);
+
+  return li;
 }
 
 function createErrorLine(message) {
@@ -493,67 +513,30 @@ function createErrorLine(message) {
   return line;
 }
 
-/** Not connected yet: explain and offer the connection, or show the code being confirmed. */
-function createFollowedConnect() {
+/** Last row of the list: connect the follows, the code to confirm, or why loading failed. */
+function createFollowedStatusRow() {
   const li = document.createElement('li');
-  li.className = 'followed-empty';
+  li.className = 'followed-status';
+
+  if (followedConnected) {
+    if (!followedError) return null;
+
+    li.textContent = "Couldn't load followed channels";
+    li.append(createErrorLine(followedError));
+    return li;
+  }
 
   if (followedPendingCode) {
     li.textContent = `Confirm on Twitch (code ${followedPendingCode})…`;
     return li;
   }
 
-  li.textContent = 'See which channels you follow are live.';
   const connectBtn = document.createElement('button');
   connectBtn.className = 'followed-connect';
-  connectBtn.textContent = 'Connect';
+  connectBtn.textContent = '\u2665 Show followed channels that are live';
   connectBtn.addEventListener('click', connectFollows);
   li.append(connectBtn);
   if (followedError) li.append(createErrorLine(followedError));
-
-  return li;
-}
-
-/** Says why the list is empty — "nobody live" must not hide a failed request. */
-function createFollowedHint() {
-  const li = document.createElement('li');
-  li.className = 'followed-empty';
-
-  if (followedError) {
-    li.textContent = "Couldn't load followed channels";
-    li.append(createErrorLine(followedError));
-  } else if (followedLive.length > 0) {
-    li.textContent = 'All followed channels that are live are in your list';
-  } else {
-    li.textContent = 'Nobody you follow is live';
-  }
-
-  return li;
-}
-
-function createFollowedItem({ login, game, viewers }) {
-  const li = document.createElement('li');
-  li.className = 'followed-item';
-
-  const nameBtn = document.createElement('button');
-  nameBtn.className = 'followed-name';
-  nameBtn.title = 'Add and focus';
-  nameBtn.addEventListener('click', () => addFollowed(login, { focus: true }));
-
-  const name = document.createElement('span');
-  name.textContent = login;
-  const meta = document.createElement('span');
-  meta.className = 'followed-meta';
-  meta.textContent = [game, `${formatViewers(viewers)} viewers`].filter(Boolean).join(' · ');
-  nameBtn.append(name, meta);
-
-  const addBtn = document.createElement('button');
-  addBtn.className = 'followed-add';
-  addBtn.title = 'Add to the list';
-  addBtn.textContent = '+';
-  addBtn.addEventListener('click', () => addFollowed(login, { focus: false }));
-
-  li.append(nameBtn, addBtn);
 
   return li;
 }
@@ -988,58 +971,68 @@ function updateQualityBadges() {
 /** Map of channel name → sidebar <li> element for DOM diffing. */
 const sidebarItems = new Map();
 
+/** Rows of followed channels and the status row — rebuilt on every render, they are few. */
+let followedRows = [];
+
 function renderSidebar() {
+  const ownNames = new Set(state.channels.map((c) => c.name));
+  const followedOnly = followedConnected
+    ? followedLive.filter((channel) => !ownNames.has(channel.login))
+    : [];
+
+  // One list: own channels plus followed channels that are live but not in the list yet.
   // Sort: online (streaming) first, then active players, then rest — alpha within each
-  const sorted = [...state.channels].sort((a, b) => {
-    const aOnline = onlineSet.has(a.name);
-    const bOnline = onlineSet.has(b.name);
-    if (aOnline !== bOnline) return aOnline ? -1 : 1;
+  const rows = [
+    ...state.channels.map((c) => ({ name: c.name, online: onlineSet.has(c.name), followed: null })),
+    ...followedOnly.map((f) => ({ name: f.login, online: true, followed: f })),
+  ].sort((a, b) => {
+    if (a.online !== b.online) return a.online ? -1 : 1;
     const aLive = state.liveSet.has(a.name);
     const bLive = state.liveSet.has(b.name);
     if (aLive !== bLive) return aLive ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
 
-  const sortedNames = new Set(sorted.map((c) => c.name));
-
   // Remove items no longer in channel list
   for (const [name, li] of sidebarItems) {
-    if (!sortedNames.has(name)) {
+    if (!ownNames.has(name)) {
       li.remove();
       sidebarItems.delete(name);
     }
   }
+  for (const li of followedRows) li.remove();
+  followedRows = [];
 
-  // Create or update items
-  for (const ch of sorted) {
-    const isLive = state.liveSet.has(ch.name);
-    const isFocus = state.focus === ch.name;
-    const isOnline = onlineSet.has(ch.name);
-
-    let li = sidebarItems.get(ch.name);
-    if (!li) {
-      li = createSidebarItem(ch.name);
-      sidebarItems.set(ch.name, li);
+  for (const row of rows) {
+    if (row.followed) {
+      const li = createFollowedRow(row.followed);
+      followedRows.push(li);
+      dom.channelList.appendChild(li);
+      continue;
     }
 
-    // Update state classes
+    let li = sidebarItems.get(row.name);
+    if (!li) {
+      li = createSidebarItem(row.name);
+      sidebarItems.set(row.name, li);
+    }
+
+    const isLive = state.liveSet.has(row.name);
     li.classList.toggle('is-live', isLive);
-    li.classList.toggle('is-focus', isFocus);
-
-    // Update toggle checkbox
+    li.classList.toggle('is-focus', state.focus === row.name);
     li._checkbox.checked = isLive;
-
-    syncVolumeControls(ch.name);
-
-    // Update live badge
-    li._liveBadge.classList.toggle('hidden', !isOnline);
+    syncVolumeControls(row.name);
+    li._liveBadge.classList.toggle('hidden', !row.online);
 
     // Append in sorted order (moves existing nodes without recreating)
     dom.channelList.appendChild(li);
   }
 
-  // A channel added or removed above changes what the followed section shows
-  renderFollowed();
+  const statusRow = createFollowedStatusRow();
+  if (statusRow) {
+    followedRows.push(statusRow);
+    dom.channelList.appendChild(statusRow);
+  }
 }
 
 function createSidebarItem(name) {

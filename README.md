@@ -31,7 +31,7 @@ Download `StreamDirector-<version>.exe` from the [latest release](https://github
 2. Add channels: type a name and press **+**, or use **Import** to paste a whole list (one per line). Ready-made lists for upcoming events are in the [Discussions](https://github.com/stefanpoensgen/stream-director/discussions).
 3. Switch channels on with the toggle next to their name. **LIVE** marks channels that are streaming right now.
 4. Click a channel (in the sidebar or a tile) to put it in focus — the focus is the only stream with sound.
-5. Below your list, **Followed · live** shows the channels you follow that are streaming right now (game and viewers). Click **Connect** once and confirm on Twitch — StreamDirector asks only for permission to read your follows. Then click a channel to add it and put it in focus, or **+** to just add it.
+5. Channels you follow on Twitch that are live right now appear in the same list, marked with **♥** (hover for game and viewers). Click **♥ Show followed channels that are live** at the end of the list once and confirm on Twitch — StreamDirector asks only for permission to read your follows. Switch a ♥ channel on to add and start it, or click its name to add it and put it in focus.
 6. Hide the sidebar again with `S` before you go live.
 
 ## Using it with OBS

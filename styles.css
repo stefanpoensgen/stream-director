@@ -377,81 +377,42 @@ ul {
   background: rgba(255, 82, 82, 0.15);
 }
 
-/* ─── Followed & live (sidebar, logged in only) ──────────────────── */
-.followed {
-  display: flex;
-  flex-direction: column;
-  max-height: 40%;
-  border-top: 1px solid var(--border);
-}
-
-.followed-title {
-  padding: 8px 12px 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-.followed-list {
-  overflow-y: auto;
-  padding-bottom: 6px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-
-.followed-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-}
-
-.followed-item:hover {
-  background: var(--surface-hover);
-}
-
-.followed-name {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  font-size: 13px;
-  text-align: left;
-}
-
-.followed-name > span {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.followed-name:hover {
-  color: var(--accent-text);
-}
-
-.followed-meta {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.followed-add {
+/* ─── Followed channels in the list (live, not added yet) ────────── */
+.followed-mark {
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  font-size: 14px;
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  transition:
-    color var(--transition),
-    border-color var(--transition);
+  margin-right: -4px;
+  font-size: 11px;
+  color: var(--accent-text);
 }
 
-.followed-add:hover {
+.channel-item.is-followed .channel-name {
+  color: var(--text-dim);
+}
+
+/* Keep the LIVE badge in the column of the other rows (volume slider 56px + delete 20px + gaps) */
+.channel-item.is-followed .live-badge {
+  margin-right: 92px;
+}
+
+.channel-item.is-followed .channel-name:hover {
   color: var(--accent-text);
-  border-color: var(--accent-text);
+}
+
+/* Last row: connect the follows / confirmation code / error */
+.followed-status {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.followed-connect {
+  font-size: 12px;
+  color: var(--text-dim);
+  transition: color var(--transition);
+}
+
+.followed-connect:hover {
+  color: var(--accent-text);
 }
 
 .followed-error {
@@ -459,31 +420,6 @@ ul {
   margin-top: 2px;
   font-size: 11px;
   color: var(--red);
-}
-
-.followed-connect {
-  display: block;
-  margin-top: 6px;
-  padding: 3px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  transition:
-    color var(--transition),
-    border-color var(--transition);
-}
-
-.followed-connect:hover {
-  color: var(--accent-text);
-  border-color: var(--accent-text);
-}
-
-.followed-empty {
-  padding: 4px 12px;
-  font-size: 12px;
-  color: var(--text-dim);
 }
 
 /* Sidebar footer */
