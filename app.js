@@ -391,7 +391,8 @@ async function refreshLoginState() {
 
 /** Followed channels that are live: { login, game, viewers }. Not persisted. */
 let followedLive = [];
-let followedLoadFailed = false;
+/** Why loading failed (host/Twitch message), null when the last load worked. */
+let followedError = null;
 
 async function refreshFollowedLive() {
   if (!isLoggedIn) {
@@ -402,10 +403,14 @@ async function refreshFollowedLive() {
 
   try {
     const response = await fetch('/api/follows/live');
-    followedLoadFailed = !response.ok;
-    if (response.ok) followedLive = await response.json();
-  } catch {
-    followedLoadFailed = true;
+    if (response.ok) {
+      followedLive = await response.json();
+      followedError = null;
+    } else {
+      followedError = (await response.text()) || `HTTP ${response.status}`;
+    }
+  } catch (error) {
+    followedError = error.message;
   }
   renderFollowed();
 }
@@ -439,8 +444,12 @@ function createFollowedHint() {
   const li = document.createElement('li');
   li.className = 'followed-empty';
 
-  if (followedLoadFailed) {
+  if (followedError) {
     li.textContent = "Couldn't load followed channels";
+    const reason = document.createElement('span');
+    reason.className = 'followed-error';
+    reason.textContent = followedError;
+    li.append(reason);
   } else if (followedLive.length > 0) {
     li.textContent = 'All followed channels that are live are in your list';
   } else {

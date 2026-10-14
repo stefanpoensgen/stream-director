@@ -458,6 +458,13 @@ ul {
   border-color: var(--accent-text);
 }
 
+.followed-error {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--red);
+}
+
 .followed-empty {
   padding: 4px 12px;
   font-size: 12px;

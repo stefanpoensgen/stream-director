@@ -53,7 +53,8 @@ internal sealed class AppRequestHandler(
         catch (Exception error)
         {
             Trace.WriteLine($"{args.Request.Uri}: {error.Message}");
-            args.Response = Text(502, "Upstream error");
+            // The message (e.g. Twitch's "failed integrity check") helps diagnosing; it never contains tokens
+            args.Response = Text(502, error.Message);
         }
         finally
         {
