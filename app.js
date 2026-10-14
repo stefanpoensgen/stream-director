@@ -387,6 +387,7 @@ async function refreshLoginState() {
 
 /** Followed channels that are live: { login, game, viewers }. Not persisted. */
 let followedLive = [];
+let followedLoadFailed = false;
 
 async function refreshFollowedLive() {
   if (!isLoggedIn) {
@@ -397,9 +398,10 @@ async function refreshFollowedLive() {
 
   try {
     const response = await fetch('/api/follows/live');
+    followedLoadFailed = !response.ok;
     if (response.ok) followedLive = await response.json();
   } catch {
-    /* keep the previous list */
+    followedLoadFailed = true;
   }
   renderFollowed();
 }
@@ -424,14 +426,22 @@ function renderFollowed() {
 
   dom.followed.classList.toggle('hidden', !isLoggedIn);
   dom.followedList.replaceChildren(
-    ...(entries.length > 0 ? entries.map(createFollowedItem) : [createFollowedEmptyHint()]),
+    ...(entries.length > 0 ? entries.map(createFollowedItem) : [createFollowedHint()]),
   );
 }
 
-function createFollowedEmptyHint() {
+/** Says why the list is empty — "nobody live" must not hide a failed request. */
+function createFollowedHint() {
   const li = document.createElement('li');
   li.className = 'followed-empty';
-  li.textContent = 'Nobody else you follow is live';
+
+  if (followedLoadFailed) {
+    li.textContent = "Couldn't load followed channels";
+  } else if (followedLive.length > 0) {
+    li.textContent = 'All followed channels that are live are in your list';
+  } else {
+    li.textContent = 'Nobody you follow is live';
+  }
 
   return li;
 }
