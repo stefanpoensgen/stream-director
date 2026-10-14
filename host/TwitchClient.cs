@@ -62,6 +62,31 @@ internal sealed class TwitchClient
     }
 
     /// <summary>
+    /// Channels the logged-in user follows that are live right now, or null when the token is not
+    /// accepted (expired login).
+    /// </summary>
+    public async Task<List<object>?> FetchFollowedLiveAsync(string authToken)
+    {
+        const string query =
+            "query { currentUser { followedLiveUsers(first: 100) { edges { node { login stream { viewersCount game { displayName } } } } } } }";
+        var data = await GqlAsync(new { query }, authToken);
+        if (data["currentUser"] is not IDictionary user) return null;
+
+        var edges = (user["followedLiveUsers"] as IDictionary)?["edges"] as ICollection ?? Array.Empty<object>();
+
+        return edges
+            .Cast<IDictionary>()
+            .Select(edge => (IDictionary)edge["node"])
+            .Select(node => (object)new
+            {
+                login = (string)node["login"],
+                game = ((node["stream"] as IDictionary)?["game"] as IDictionary)?["displayName"] as string,
+                viewers = (node["stream"] as IDictionary)?["viewersCount"] as int? ?? 0,
+            })
+            .ToList();
+    }
+
+    /// <summary>
     /// Fetches the HLS master playlist of a channel.
     /// With the auth token of a Twitch Turbo account the stream comes without ads.
     /// </summary>

@@ -234,7 +234,9 @@ ul {
 
 /* Channel list */
 .channel-list {
-  flex: 1;
+  /* Only as tall as its channels (scrolls when long) — the followed section sits right below */
+  flex: 0 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 6px 0;
   scrollbar-width: thin;
@@ -375,8 +377,96 @@ ul {
   background: rgba(255, 82, 82, 0.15);
 }
 
+/* ─── Followed & live (sidebar, logged in only) ──────────────────── */
+.followed {
+  display: flex;
+  flex-direction: column;
+  max-height: 40%;
+  border-top: 1px solid var(--border);
+}
+
+.followed.hidden {
+  display: none;
+}
+
+.followed-title {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.followed-list {
+  overflow-y: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.followed-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+}
+
+.followed-item:hover {
+  background: var(--surface-hover);
+}
+
+.followed-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+  text-align: left;
+}
+
+.followed-name > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.followed-name:hover {
+  color: var(--accent-text);
+}
+
+.followed-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.followed-add {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.followed-add:hover {
+  color: var(--accent-text);
+  border-color: var(--accent-text);
+}
+
+.followed-empty {
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 /* Sidebar footer */
 .sidebar-footer {
+  margin-top: auto;
   padding: 8px 12px;
   border-top: 1px solid var(--border);
   display: flex;

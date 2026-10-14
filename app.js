@@ -46,6 +46,8 @@ function cacheDom() {
   dom.content = document.getElementById('content');
   dom.focusEmpty = document.getElementById('focus-empty');
   dom.channelList = document.getElementById('channel-list');
+  dom.followed = document.getElementById('followed');
+  dom.followedList = document.getElementById('followed-list');
   dom.sidebarToggle = document.getElementById('sidebar-toggle');
   dom.addChannelForm = document.getElementById('add-channel-form');
   dom.addChannelInput = document.getElementById('add-channel-input');
@@ -77,6 +79,7 @@ function init() {
   checkAllLive();
   setInterval(checkAllLive, LIVE_CHECK_INTERVAL_MS);
   refreshLoginState();
+  setInterval(refreshFollowedLive, LIVE_CHECK_INTERVAL_MS);
 
   if (IS_DEV) {
     setInterval(updateQualityBadges, QUALITY_BADGE_INTERVAL_MS);
@@ -375,6 +378,89 @@ async function refreshLoginState() {
 
   dom.twitchLogin.textContent = isLoggedIn ? 'Logout' : 'Login';
   dom.twitchLogin.title = isLoggedIn ? 'Twitch Logout' : 'Twitch Login';
+  refreshFollowedLive();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Followed & live (needs the Twitch login)
+// ═══════════════════════════════════════════════════════════════════
+
+/** Followed channels that are live: { login, game, viewers }. Not persisted. */
+let followedLive = [];
+
+async function refreshFollowedLive() {
+  if (!isLoggedIn) {
+    followedLive = [];
+    renderFollowed();
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/follows/live');
+    if (response.ok) followedLive = await response.json();
+  } catch {
+    /* keep the previous list */
+  }
+  renderFollowed();
+}
+
+function formatViewers(viewers) {
+  return viewers >= 1000 ? `${(viewers / 1000).toFixed(1)}k` : String(viewers);
+}
+
+/** Adds a followed channel to the own list; optionally puts it in focus right away. */
+function addFollowed(login, { focus }) {
+  addChannel(login);
+  if (focus) setFocus(login);
+  renderFollowed();
+}
+
+/** Only channels that are not in the own list yet — those are listed above already. */
+function renderFollowed() {
+  const known = new Set(state.channels.map((c) => c.name));
+  const entries = followedLive
+    .filter((channel) => !known.has(channel.login))
+    .sort((a, b) => b.viewers - a.viewers);
+
+  dom.followed.classList.toggle('hidden', !isLoggedIn);
+  dom.followedList.replaceChildren(
+    ...(entries.length > 0 ? entries.map(createFollowedItem) : [createFollowedEmptyHint()]),
+  );
+}
+
+function createFollowedEmptyHint() {
+  const li = document.createElement('li');
+  li.className = 'followed-empty';
+  li.textContent = 'Nobody else you follow is live';
+
+  return li;
+}
+
+function createFollowedItem({ login, game, viewers }) {
+  const li = document.createElement('li');
+  li.className = 'followed-item';
+
+  const nameBtn = document.createElement('button');
+  nameBtn.className = 'followed-name';
+  nameBtn.title = 'Add and focus';
+  nameBtn.addEventListener('click', () => addFollowed(login, { focus: true }));
+
+  const name = document.createElement('span');
+  name.textContent = login;
+  const meta = document.createElement('span');
+  meta.className = 'followed-meta';
+  meta.textContent = [game, `${formatViewers(viewers)} viewers`].filter(Boolean).join(' · ');
+  nameBtn.append(name, meta);
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'followed-add';
+  addBtn.title = 'Add to the list';
+  addBtn.textContent = '+';
+  addBtn.addEventListener('click', () => addFollowed(login, { focus: false }));
+
+  li.append(nameBtn, addBtn);
+
+  return li;
 }
 
 /** Login opens Twitch's login page; logout drops the session and restarts the streams anonymously. */
@@ -836,6 +922,9 @@ function renderSidebar() {
     // Append in sorted order (moves existing nodes without recreating)
     dom.channelList.appendChild(li);
   }
+
+  // A channel added or removed above changes what the followed section shows
+  renderFollowed();
 }
 
 function createSidebarItem(name) {

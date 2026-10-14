@@ -37,6 +37,7 @@ internal sealed class AppRequestHandler(
     private const string LiveRoute = "/api/live";
     private const string AuthRoute = "/api/auth";
     private const string LogoutRoute = "/api/logout";
+    private const string FollowedLiveRoute = "/api/follows/live";
     private static readonly Regex PlaylistRoute = new(@"^/api/playlist/([a-z0-9_]+)\.m3u8$");
 
     private readonly JavaScriptSerializer _json = new();
@@ -65,6 +66,7 @@ internal sealed class AppRequestHandler(
         if (uri.AbsolutePath == LiveRoute) return await LiveAsync(uri);
         if (uri.AbsolutePath == AuthRoute) return await AuthAsync();
         if (uri.AbsolutePath == LogoutRoute) return await LogoutAsync(request);
+        if (uri.AbsolutePath == FollowedLiveRoute) return await FollowedLiveAsync();
 
         var playlistMatch = PlaylistRoute.Match(uri.AbsolutePath);
         if (playlistMatch.Success) return await PlaylistAsync(playlistMatch.Groups[1].Value);
@@ -96,6 +98,17 @@ internal sealed class AppRequestHandler(
             PlaylistStatus.Forbidden => Text(403, "Playback not allowed"),
             _ => Response(200, playlist!, PlaylistContentType),
         };
+    }
+
+    private async Task<CoreWebView2WebResourceResponse> FollowedLiveAsync()
+    {
+        var authToken = await session.GetAuthTokenAsync();
+        if (authToken is null) return Text(401, "Not logged in");
+
+        var followed = await twitch.FetchFollowedLiveAsync(authToken);
+        if (followed is null) return Text(401, "Login not accepted");
+
+        return Response(200, _json.Serialize(followed), JsonContentType);
     }
 
     private async Task<CoreWebView2WebResourceResponse> AuthAsync() =>

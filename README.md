@@ -13,6 +13,7 @@ StreamDirector shows up to 14 Twitch channels in one 1920×1080 window: one larg
 - **Efficient** — tiles play in 360p, only the focus in source quality; no heavy Twitch embeds
 - **Per-channel volume** — streamers differ in loudness; each channel remembers its own volume
 - **Twitch Turbo support** — log in once and all streams play without ads
+- **Followed & live** — when logged in, the channels you follow that are live right now are one click away
 - **Live status** — see at a glance which of your channels are streaming
 - **Tiny** — a single 2 MB `.exe`, no installation
 
@@ -29,7 +30,8 @@ Download `StreamDirector-<version>.exe` from the [latest release](https://github
 2. Add channels: type a name and press **+**, or use **Import** to paste a whole list (one per line). Ready-made lists for upcoming events are in the [Discussions](https://github.com/stefanpoensgen/stream-director/discussions).
 3. Switch channels on with the toggle next to their name. **LIVE** marks channels that are streaming right now.
 4. Click a channel (in the sidebar or a tile) to put it in focus — the focus is the only stream with sound.
-5. Hide the sidebar again with `S` before you go live.
+5. Logged in to Twitch? Below your list, **Followed · live** shows the channels you follow that are streaming right now (game and viewers). Click one to add it and put it in focus, or **+** to just add it.
+6. Hide the sidebar again with `S` before you go live.
 
 ## Using it with OBS
 
@@ -133,6 +135,7 @@ vendor/hls.light.mjs     Vendored hls.js
 | `GET /api/playlist/<name>.m3u8` | HLS master playlist (with Turbo token if any) |
 | `GET /api/auth`                 | `{ "loggedIn": true/false }`                  |
 | `POST /api/logout`              | Drop the Twitch session                       |
+| `GET /api/follows/live`         | Followed channels that are live (login only)  |
 
 ### Dependencies
 
