@@ -8,6 +8,6 @@
     "check": "prettier --check ."
   },
   "devDependencies": {
-    "prettier": "^3.8.1"
+    "prettier": "^3.9.10"
   }
 }
