@@ -26,7 +26,7 @@ internal sealed class TwitchClient
     private const string GqlUrl = "https://gql.twitch.tv/gql";
     private const string ClientId = "kimne78kx3ncx6brgo4mv6wki5h1ko";
     private const string UsherUrl = "https://usher.ttvnw.net/api/channel/hls";
-    private const int LiveCheckBatchSize = 35;
+    private const int LiveCheckBatchSize = 100; // users(logins:) takes at most 100 logins
 
     private const string PlaybackTokenQuery = """
         query PlaybackAccessToken($login: String!) {
@@ -38,7 +38,7 @@ internal sealed class TwitchClient
         """;
 
     private const string LiveStreamFields =
-        "id displayName broadcastSettings { title } stream { viewersCount game { displayName } }";
+        "id login displayName broadcastSettings { title } stream { viewersCount game { displayName } }";
 
     private const string LiveWithFields =
         "id session { guests { user { id displayName stream { viewersCount } } } }";
@@ -57,21 +57,18 @@ internal sealed class TwitchClient
     /// </summary>
     public async Task<List<object>> FetchLiveStreamsAsync(IReadOnlyList<string> names)
     {
-        var liveUsers = new List<(string Login, IDictionary User, IDictionary Stream)>();
+        var liveUsers = new List<(IDictionary User, IDictionary Stream)>();
 
+        // One list query per batch — Twitch rejects queries with more than 15 aliased root fields
         for (var start = 0; start < names.Count; start += LiveCheckBatchSize)
         {
-            var batch = names.Skip(start).Take(LiveCheckBatchSize).ToList();
-            var aliases = batch.Select((name, index) =>
-                $"u{index}: user(login: \"{name}\") {{ {LiveStreamFields} }}");
-            var data = await GqlAsync(new { query = $"query {{ {string.Join(" ", aliases)} }}" });
+            var logins = string.Join(", ", names.Skip(start).Take(LiveCheckBatchSize).Select(name => $"\"{name}\""));
+            var data = await GqlAsync(new { query = $"query {{ users(logins: [{logins}]) {{ {LiveStreamFields} }} }}" });
 
-            for (var index = 0; index < batch.Count; index++)
+            // Unknown or banned logins come back as null
+            foreach (var user in (data["users"] as ICollection ?? Array.Empty<object>()).OfType<IDictionary>())
             {
-                if (data[$"u{index}"] is IDictionary user && user["stream"] is IDictionary stream)
-                {
-                    liveUsers.Add((batch[index], user, stream));
-                }
+                if (user["stream"] is IDictionary stream) liveUsers.Add((user, stream));
             }
         }
 
@@ -80,7 +77,7 @@ internal sealed class TwitchClient
         return liveUsers
             .Select(live => (object)new
             {
-                login = live.Login,
+                login = (string)live.User["login"],
                 displayName = live.User["displayName"] as string,
                 title = (live.User["broadcastSettings"] as IDictionary)?["title"] as string,
                 game = (live.Stream["game"] as IDictionary)?["displayName"] as string,
