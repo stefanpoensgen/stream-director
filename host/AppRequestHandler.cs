@@ -16,17 +16,12 @@ namespace StreamDirector;
 
 internal sealed class AppRequestHandler(
     CoreWebView2Environment environment,
-    string webRoot,
     TwitchClient twitch,
     TwitchSession session)
 {
     // Twitch's playlist servers only accept requests from localhost or twitch.tv origins (403 otherwise).
     // Nothing listens on localhost: WebView2 hands every request to this handler.
     public const string Origin = "https://localhost";
-
-    /// <summary>Renderer files — the only files handed out.</summary>
-    private static readonly HashSet<string> StaticFiles =
-        ["index.html", "app.js", "player.js", "styles.css", "vendor/hls.light.mjs"];
 
     private static readonly Dictionary<string, string> ContentTypes = new()
     {
@@ -36,6 +31,7 @@ internal sealed class AppRequestHandler(
         [".mjs"] = "text/javascript; charset=utf-8",
     };
 
+    private const string FallbackContentType = "application/octet-stream";
     private const string JsonContentType = "application/json";
     private const string PlaylistContentType = "application/vnd.apple.mpegurl";
     private const string LiveRoute = "/api/live";
@@ -115,14 +111,16 @@ internal sealed class AppRequestHandler(
         return Response(200, _json.Serialize(new { loggedIn = false }), JsonContentType);
     }
 
+    /// <summary>Renderer files come from the exe's wwwroot/* resources — only what the project embeds is served.</summary>
     private CoreWebView2WebResourceResponse Static(string path)
     {
         var file = path == "/" ? "index.html" : path.TrimStart('/');
-        if (!StaticFiles.Contains(file)) return Text(404, "Not found");
+        var content = EmbeddedFiles.Read($"wwwroot/{file}");
+        if (content is null) return Text(404, "Not found");
 
-        var content = File.ReadAllBytes(Path.Combine(webRoot, file));
+        var contentType = ContentTypes.TryGetValue(Path.GetExtension(file), out var type) ? type : FallbackContentType;
 
-        return Response(200, content, ContentTypes[Path.GetExtension(file)]);
+        return Response(200, content, contentType);
     }
 
     /// <summary>State-changing requests must come from the app page itself (browsers always send Origin on POST).</summary>

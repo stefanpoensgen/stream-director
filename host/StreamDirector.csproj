@@ -28,15 +28,23 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- Renderer files are shared with the repository root and copied next to the exe -->
+  <!--
+    Single-file app: everything the exe needs is embedded, StreamDirector.exe is the whole release.
+    Resource names mirror paths; the renderer is served from wwwroot/*, see EmbeddedFiles.cs.
+  -->
   <ItemGroup>
-    <None Include="..\index.html;..\app.js;..\player.js;..\styles.css" Link="wwwroot\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\vendor\hls.light.mjs" Link="wwwroot\vendor\hls.light.mjs" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\LICENSE;..\vendor\hls.js.LICENSE" Link="licenses\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="..\index.html;..\app.js;..\player.js;..\styles.css" LogicalName="wwwroot/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\vendor\hls.light.mjs" LogicalName="wwwroot/vendor/hls.light.mjs" />
+    <EmbeddedResource Include="..\LICENSE" LogicalName="licenses/LICENSE" />
+    <EmbeddedResource Include="..\vendor\hls.js.LICENSE" LogicalName="licenses/hls.js.LICENSE" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\lib\net462\Microsoft.Web.WebView2.Core.dll;$(PkgMicrosoft_Web_WebView2)\lib\net462\Microsoft.Web.WebView2.WinForms.dll" LogicalName="assemblies/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x64\native\WebView2Loader.dll" LogicalName="native/win-x64/WebView2Loader.dll" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x86\native\WebView2Loader.dll" LogicalName="native/win-x86/WebView2Loader.dll" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-arm64\native\WebView2Loader.dll" LogicalName="native/win-arm64/WebView2Loader.dll" />
   </ItemGroup>
 
 </Project>

@@ -63,6 +63,7 @@ internal sealed class MainForm : Form
     {
         var userDataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StreamDirector", "WebView2");
+        CoreWebView2Environment.SetLoaderDllFolderPath(EmbeddedFiles.ExtractWebView2Loader());
         var options = new CoreWebView2EnvironmentOptions(BrowserArguments);
         var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
         _environment = environment;
@@ -73,9 +74,8 @@ internal sealed class MainForm : Form
         core.Settings.AreDevToolsEnabled = _isDev;
         _webView.AllowExternalDrop = false; // a dropped file or link would replace the app page
 
-        var webRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot");
         _session = new TwitchSession(core.CookieManager);
-        var requestHandler = new AppRequestHandler(environment, webRoot, new TwitchClient(), _session);
+        var requestHandler = new AppRequestHandler(environment, new TwitchClient(), _session);
         core.AddWebResourceRequestedFilter($"{AppRequestHandler.Origin}/*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += requestHandler.OnWebResourceRequested;
 

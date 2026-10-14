@@ -34,13 +34,16 @@ jobs:
         shell: pwsh
         env:
           TAG: ${{ github.ref_name }}
-        run: dotnet build host -c Release "-p:Version=$($env:TAG.TrimStart('v'))" -o dist/StreamDirector
+        run: dotnet build host -c Release "-p:Version=$($env:TAG.TrimStart('v'))" -o build
 
-      - name: Zip app folder
+      # Everything is embedded — the exe is the whole release
+      - name: Collect release file
         shell: pwsh
         env:
           TAG: ${{ github.ref_name }}
-        run: Compress-Archive -Path dist/StreamDirector -DestinationPath "dist/StreamDirector-$env:TAG-win.zip"
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build/StreamDirector.exe "dist/StreamDirector-$env:TAG.exe"
 
       - name: Generate release notes
         id: notes
@@ -58,5 +61,5 @@ jobs:
 
       - uses: softprops/action-gh-release@v3
         with:
-          files: dist/*.zip
+          files: dist/*.exe
           body: ${{ steps.notes.outputs.body }}

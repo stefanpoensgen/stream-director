@@ -11,7 +11,7 @@ Designed for 1920x1080 OBS window capture in live productions.
 
 ## Download
 
-Download `StreamDirector-<version>-win.zip` from the [latest release](https://github.com/stefanpoensgen/stream-director/releases/latest), extract it anywhere and run `StreamDirector.exe`. No installation required.
+Download `StreamDirector-<version>.exe` from the [latest release](https://github.com/stefanpoensgen/stream-director/releases/latest) and run it — a single file, no installation required.
 
 Requires Windows 10 or 11 — everything else (the WebView2 browser engine and .NET Framework 4.8) is part of Windows and kept up to date by Windows Update.
 
@@ -81,14 +81,14 @@ The app is a small C# host (`host/`) that shows the web renderer (`index.html`, 
 npm install
 npm run check
 
-# Build → host/bin/Debug/net48/
+# Build → host/bin/Debug/net48/StreamDirector.exe
 dotnet build host
 
 # Run with DevTools (F5 reloads the page)
 host/bin/Debug/net48/StreamDirector.exe --dev
 ```
 
-Renderer changes need a `dotnet build` (it copies them next to the exe), then F5.
+Renderer files are embedded into the exe, so renderer changes need a `dotnet build` and an app restart.
 
 > **WSL:** build into a Windows folder and start it from there, e.g. `dotnet build host -o /mnt/c/Users/<you>/StreamDirector-dev`. Windows may run a stale cached copy of an exe started from `\\wsl.localhost\…`.
 
@@ -101,6 +101,7 @@ host/                    C# WebView2 host (.NET Framework 4.8)
   TwitchClient.cs        Twitch API client (live status, HLS playlists)
   TwitchSession.cs       Login state (WebView2 cookie store), logout
   LoginForm.cs           Twitch login window, closes itself after login
+  EmbeddedFiles.cs       Single-file support: renderer, WebView2 assemblies and loader live in the exe
   NativeMethods.cs       Win32 icon loading
 index.html               App shell
 app.js                   State management, layout, player lifecycle, volume, hotkeys
@@ -108,6 +109,8 @@ player.js                HLS player per channel (tile/focus quality switching)
 styles.css               Dark theme, CSS Grid layout
 vendor/                  Vendored hls.js (light build)
 ```
+
+The release is one file: renderer, licenses and the WebView2 assemblies are embedded resources. Only the tiny native `WebView2Loader.dll` cannot run from memory — it is written once to `%LOCALAPPDATA%\StreamDirector\WebView2Loader\`.
 
 There is no local web server: WebView2 hands every request for `https://localhost` to the host. The origin has to be `localhost` — Twitch's playlist servers reject other origins.
 
@@ -136,7 +139,7 @@ sed -i '/^\/\/# sourceMappingURL=/d' vendor/hls.light.mjs
 
 ### Release
 
-Tag a version to trigger a GitHub Action that builds the app and attaches it as zip to a new release. The app version is taken from the tag — no version bump commit needed:
+Tag a version to trigger a GitHub Action that builds the app and attaches the exe to a new release. The app version is taken from the tag — no version bump commit needed:
 
 ```bash
 git tag v1.0.0
