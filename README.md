@@ -20,12 +20,14 @@ Download `StreamDirector-<version>-win-x64.zip` from the [latest release](https:
 - **Add channels** via the sidebar input or the **Import** button (paste a list, one per line). Check the [Discussions](https://github.com/stefanpoensgen/stream-director/discussions) for ready-made channel lists for upcoming events
 - **Toggle** channels live with the switch in the sidebar
 - **Click** a channel name to focus it (large view + audio)
+- **Volume** is set per channel (slider when hovering the focus, sidebar slider or `↑`/`↓`) and remembered
 
 ## Hotkeys
 
 | Key       | Action                            |
 | --------- | --------------------------------- |
 | `←` / `→` | Cycle focus through live channels |
+| `↑` / `↓` | Volume of focused channel ±5 %    |
 | `F`       | Recall last focused channel       |
 | `S`       | Toggle sidebar                    |
 | `C`       | Open chat of focused channel      |

@@ -9,11 +9,14 @@ const STORAGE_KEY = 'stream-director';
 const DEFAULT_MAX_PLAYERS = 14;
 const LIVE_CHECK_INTERVAL_MS = 60_000;
 const QUALITY_BADGE_INTERVAL_MS = 2000;
+const DEFAULT_VOLUME = 1;
+const VOLUME_STEP_PERCENT = 5;
+const VOLUME_OSD_DURATION_MS = 1200;
 const IS_DEV = new URL(location.href).searchParams.has('dev');
 
 // ─── Application State ─────────────────────────────────────────────
 const state = {
-  channels: [], // persisted in localStorage
+  channels: [], // { name, volume? } — persisted in localStorage
   liveSet: new Set(), // channel names with active players
   focus: null, // currently focused channel name
   lru: [], // LRU tracking — most recently used at end
@@ -22,7 +25,7 @@ const state = {
 };
 
 // ─── Player Registry ────────────────────────────────────────────────
-// Maps channel name → { container: HTMLElement, player, qualityBadge: HTMLElement|null }
+// Maps channel name → { container, player, volumeOsd, volumeControl, qualityBadge: HTMLElement|null }
 const players = new Map();
 
 // Tracks which channels are actually streaming
@@ -369,6 +372,91 @@ function removeChannel(name) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Volume (per channel, remembered — streamers differ in loudness)
+// ═══════════════════════════════════════════════════════════════════
+
+function getChannelVolume(name) {
+  return state.channels.find((c) => c.name === name)?.volume ?? DEFAULT_VOLUME;
+}
+
+function setChannelVolume(name, volume) {
+  const channel = state.channels.find((c) => c.name === name);
+  if (!channel) return;
+
+  // Snap to whole-percent steps — no float drift from repeated ↑/↓
+  const percent = Math.round((volume * 100) / VOLUME_STEP_PERCENT) * VOLUME_STEP_PERCENT;
+  channel.volume = Math.min(100, Math.max(0, percent)) / 100;
+
+  const entry = players.get(name);
+  entry?.player.setVolume(channel.volume);
+  if (entry && name === state.focus) showVolumeOsd(entry, channel.volume);
+
+  // Only the controls — a full renderSidebar() re-appends rows and breaks an ongoing drag
+  syncVolumeControls(name);
+  saveState();
+}
+
+/** Adjust the focused channel's volume (direction: +1 or -1). */
+function stepFocusVolume(direction) {
+  if (!state.focus) return;
+
+  setChannelVolume(
+    state.focus,
+    getChannelVolume(state.focus) + (direction * VOLUME_STEP_PERCENT) / 100,
+  );
+}
+
+/** Range input 0–100 % bound to a channel's volume (sidebar row and focus overlay). */
+function createVolumeSlider(name, className) {
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.className = className;
+  slider.min = '0';
+  slider.max = '100';
+  slider.step = String(VOLUME_STEP_PERCENT);
+  slider.addEventListener('input', () => setChannelVolume(name, slider.value / 100));
+
+  // Hand the keyboard back to the hotkeys (←/→ would otherwise move the slider)
+  slider.addEventListener('change', () => slider.blur());
+
+  return slider;
+}
+
+/** Update every control showing a channel's volume (sidebar slider, focus overlay). */
+function syncVolumeControls(name) {
+  const volume = getChannelVolume(name);
+  const percent = String(Math.round(volume * 100));
+  const label = formatVolume(volume);
+
+  const sidebarSlider = sidebarItems.get(name)?._volumeSlider;
+  if (sidebarSlider) {
+    sidebarSlider.value = percent;
+    sidebarSlider.title = `Volume ${label}`;
+  }
+
+  const overlay = players.get(name)?.volumeControl;
+  if (overlay) {
+    overlay.slider.value = percent;
+    overlay.label.textContent = label;
+  }
+}
+
+function formatVolume(volume) {
+  const percent = Math.round(volume * 100);
+
+  return `${percent === 0 ? '\u{1F507}' : '\u{1F50A}'} ${percent} %`;
+}
+
+function showVolumeOsd(entry, volume) {
+  const osd = entry.volumeOsd;
+  osd.textContent = formatVolume(volume);
+  osd.classList.add('is-visible');
+
+  clearTimeout(osd._hideTimer);
+  osd._hideTimer = setTimeout(() => osd.classList.remove('is-visible'), VOLUME_OSD_DURATION_MS);
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // Sidebar Collapse
 // ═══════════════════════════════════════════════════════════════════
 
@@ -568,6 +656,22 @@ function createPlayerSlot(name) {
   badge.textContent = 'OFFLINE';
   container.appendChild(badge);
 
+  // Volume indicator, briefly shown on ↑/↓
+  const volumeOsd = document.createElement('div');
+  volumeOsd.className = 'volume-osd';
+  container.appendChild(volumeOsd);
+
+  // Volume overlay, visible while hovering the focus
+  const volumeControl = {
+    element: document.createElement('div'),
+    slider: createVolumeSlider(name, 'volume-control-slider'),
+    label: document.createElement('span'),
+  };
+  volumeControl.element.className = 'volume-control';
+  volumeControl.label.className = 'volume-control-label';
+  volumeControl.element.append(volumeControl.slider, volumeControl.label);
+  container.appendChild(volumeControl.element);
+
   // Quality debug badge (dev mode only)
   let qualityBadge = null;
   if (IS_DEV) {
@@ -592,7 +696,10 @@ function createPlayerSlot(name) {
     },
   });
 
-  players.set(name, { container, player, qualityBadge });
+  player.setVolume(getChannelVolume(name));
+
+  players.set(name, { container, player, volumeOsd, volumeControl, qualityBadge });
+  syncVolumeControls(name);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -653,6 +760,8 @@ function renderSidebar() {
     // Update toggle checkbox
     li._checkbox.checked = isLive;
 
+    syncVolumeControls(ch.name);
+
     // Update live badge
     li._liveBadge.classList.toggle('hidden', !isOnline);
 
@@ -693,6 +802,8 @@ function createSidebarItem(name) {
   liveBadge.className = 'live-badge hidden';
   liveBadge.textContent = 'LIVE';
 
+  const volumeSlider = createVolumeSlider(name, 'channel-volume');
+
   // Delete button
   const delBtn = document.createElement('button');
   delBtn.className = 'channel-delete';
@@ -703,11 +814,12 @@ function createSidebarItem(name) {
     removeChannel(name);
   });
 
-  li.append(toggle, nameBtn, liveBadge, delBtn);
+  li.append(toggle, nameBtn, liveBadge, volumeSlider, delBtn);
 
   // Store refs for fast updates
   li._checkbox = checkbox;
   li._liveBadge = liveBadge;
+  li._volumeSlider = volumeSlider;
 
   return li;
 }
@@ -781,6 +893,14 @@ function handleHotkey(e) {
     case 'S':
       e.preventDefault();
       toggleSidebar();
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      stepFocusVolume(1);
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      stepFocusVolume(-1);
       break;
     case 'c':
     case 'C':

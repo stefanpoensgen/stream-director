@@ -377,6 +377,13 @@ ul {
 }
 
 /* Channel delete button */
+.channel-volume {
+  flex-shrink: 0;
+  width: 56px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .channel-delete {
   flex-shrink: 0;
   width: 20px;
@@ -628,6 +635,41 @@ ul {
   opacity: 1;
 }
 
+/* ─── Volume Overlay (focus, on hover) ───────────────────────────── */
+.volume-control {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 4px;
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition);
+}
+
+.player-slot.is-focus:hover .volume-control {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.volume-control-slider {
+  width: 140px;
+  accent-color: var(--accent-hover);
+  cursor: pointer;
+}
+
+.volume-control-label {
+  min-width: 64px;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Quality Debug Badge (dev mode) ─────────────────────────────── */
 .quality-badge {
   position: absolute;
@@ -668,6 +710,28 @@ ul {
 
 .player-badge.hidden {
   display: none;
+}
+
+/* ─── Volume OSD (focus, briefly on ↑/↓) ─────────────────────────── */
+.volume-osd {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 8px 18px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  border-radius: var(--radius);
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.volume-osd.is-visible {
+  opacity: 1;
 }
 
 /* ─── Scrollbar ──────────────────────────────────────────────────── */

@@ -104,6 +104,11 @@ export function createPlayer(channel, container, { onOnline, onOffline }) {
       if (hls && levels) hls.nextLevel = desiredLevel();
     },
 
+    /** Volume 0–1; only audible while focused (tiles stay muted). */
+    setVolume(volume) {
+      video.volume = volume;
+    },
+
     /** Currently displayed rendition, e.g. "1080p60" (dev badge). */
     qualityLabel() {
       if (!hls || !video.videoHeight) return '…';
