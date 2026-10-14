@@ -1,4 +1,5 @@
-// Frameless 1920×1080 window hosting the renderer in WebView2 (the Edge engine built into Windows).
+// 1920×1080 window hosting the renderer in WebView2 (the Edge engine built into Windows).
+// A normal window with title bar: OBS window capture records only the client area by default.
 
 using System;
 using System.Diagnostics;
@@ -28,6 +29,8 @@ internal sealed class MainForm : Form
     private readonly bool _isDev;
     private CoreWebView2Environment? _environment;
     private LoginForm? _loginForm;
+    private bool _isFullscreen;
+    private FormWindowState _windowStateBeforeFullscreen;
     private TwitchSession? _session;
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = BackgroundColor };
 
@@ -37,11 +40,16 @@ internal sealed class MainForm : Form
 
         Text = "StreamDirector";
         Icon = NativeMethods.LoadApplicationIcon();
-        FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = BackgroundColor;
         ClientSize = new Size(LogicalToDeviceUnits(ContentWidth), LogicalToDeviceUnits(ContentHeight));
         Controls.Add(_webView);
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        NativeMethods.UseDarkTitleBar(Handle);
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -70,7 +78,6 @@ internal sealed class MainForm : Form
         await _webView.EnsureCoreWebView2Async(environment);
 
         var core = _webView.CoreWebView2;
-        core.Settings.IsNonClientRegionSupportEnabled = true; // CSS app-region: drag moves the window
         core.Settings.AreDevToolsEnabled = _isDev;
         _webView.AllowExternalDrop = false; // a dropped file or link would replace the app page
 
@@ -81,7 +88,6 @@ internal sealed class MainForm : Form
 
         core.NavigationStarting += OnNavigationStarting;
         core.NewWindowRequested += OnNewWindowRequested;
-        core.WindowCloseRequested += (_, _) => Close();
         core.WebMessageReceived += OnWebMessageReceived;
         await core.AddScriptToExecuteOnDocumentCreatedAsync(HostScript());
 
@@ -202,9 +208,27 @@ internal sealed class MainForm : Form
         if (message == ToggleFullscreenMessage) ToggleFullscreen();
     }
 
-    /// <summary>A maximized borderless window covers the whole screen including the taskbar.</summary>
+    /// <summary>
+    /// Fullscreen = borderless + maximized, which also covers the taskbar.
+    /// Leaving it brings back the title bar and the previous window state.
+    /// </summary>
     private void ToggleFullscreen()
     {
-        WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
+        if (_isFullscreen)
+        {
+            FormBorderStyle = FormBorderStyle.Sizable;
+            WindowState = _windowStateBeforeFullscreen;
+        }
+        else
+        {
+            _windowStateBeforeFullscreen = WindowState;
+
+            // Maximize only after removing the frame — a window maximized with frame keeps the taskbar visible
+            WindowState = FormWindowState.Normal;
+            FormBorderStyle = FormBorderStyle.None;
+            WindowState = FormWindowState.Maximized;
+        }
+
+        _isFullscreen = !_isFullscreen;
     }
 }

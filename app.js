@@ -48,7 +48,6 @@ function cacheDom() {
   dom.twitchLogin = document.getElementById('twitch-login');
   dom.branding = document.getElementById('branding');
   dom.chatBtn = document.getElementById('chat-btn');
-  dom.closeBtn = document.getElementById('close-btn');
   dom.importBtn = document.getElementById('import-btn');
   dom.importOverlay = document.getElementById('import-overlay');
   dom.importTextarea = document.getElementById('import-textarea');
@@ -909,7 +908,6 @@ function bindEvents() {
   dom.sidebarToggle.addEventListener('click', toggleSidebar);
   dom.twitchLogin.addEventListener('click', toggleLogin);
   dom.chatBtn.addEventListener('click', openChat);
-  dom.closeBtn.addEventListener('click', () => window.close());
 
   // Import
   dom.importBtn.addEventListener('click', showImportModal);

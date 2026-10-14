@@ -40,13 +40,13 @@ Requires Windows 10 or 11 — everything else (the WebView2 browser engine and .
 
 ## Window Controls
 
-The app runs as a frameless window. Controls are in the bottom-left corner:
+The app is a normal window (title bar for moving, minimizing and closing; `F11` toggles fullscreen without it). Its own controls are in the bottom-left corner:
 
-- **Drag** the logo area to move the window
 - **Menu** toggles the sidebar
 - **Login** opens the Twitch login window, which closes by itself once you are logged in. The login is used for all streams, so a Twitch Turbo subscription removes ads everywhere. While logged in, the button turns into **Logout**
 - **Chat** opens the chat of the focused channel in a popup
-- **Close** (✕) closes the app
+
+**OBS:** add the app as **Window Capture** and keep **Client Area** enabled (default) — the title bar is then not part of the stream.
 
 Settings, channel list and Twitch login are stored in `%LOCALAPPDATA%\StreamDirector`. Delete that folder to reset the app.
 
@@ -57,7 +57,7 @@ L-shape grid optimized for 1920x1080:
 - **Left column** (240px): up to 7 tiles stacked vertically
 - **Focus area**: remaining width, top-right
 - **Bottom row**: additional tiles
-- **Bottom-left cell**: branding, drag handle, menu/chat/login/close buttons
+- **Bottom-left cell**: branding, menu/chat/login buttons
 
 ## Playback
 
@@ -96,7 +96,7 @@ Renderer files are embedded into the exe, so renderer changes need a `dotnet bui
 
 ```
 host/                    C# WebView2 host (.NET Framework 4.8)
-  MainForm.cs            Frameless window, popups, F11, version label
+  MainForm.cs            Window (dark title bar), popups, F11 fullscreen, version label
   AppRequestHandler.cs   Answers https://localhost/* in-process: renderer files + API
   TwitchClient.cs        Twitch API client (live status, HLS playlists)
   TwitchSession.cs       Login state (WebView2 cookie store), logout

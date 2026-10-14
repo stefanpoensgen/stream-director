@@ -80,8 +80,6 @@ ul {
   gap: 6px;
   background: var(--surface);
   border-radius: var(--radius);
-  -webkit-app-region: drag;
-  cursor: move;
   user-select: none;
   /* grid-row / grid-column set by JS */
 }
@@ -91,51 +89,11 @@ ul {
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--text);
-  cursor: move;
-}
-
-.branding-logo::before {
-  content: '\2847 ';
-  color: var(--text-dim);
-  font-size: 14px;
-}
-
-/* ─── Close Button (top-left of branding) ────────────────────────── */
-.close-btn {
-  position: absolute;
-  top: 4px;
-  left: 6px;
-  padding: 2px 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-dim);
-  background: none;
-  border: none;
-  border-radius: var(--radius);
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-  transition:
-    color var(--transition),
-    background var(--transition);
-}
-
-.close-btn:hover {
-  color: var(--red);
-  background: rgba(255, 82, 82, 0.15);
-}
-
-.drag-hint {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  font-size: 10px;
-  color: var(--accent-text);
 }
 
 .branding-buttons {
   display: flex;
   gap: 6px;
-  -webkit-app-region: no-drag;
 }
 
 .github-link {
@@ -148,7 +106,6 @@ ul {
   color: var(--text-dim);
   text-decoration: none;
   font-size: 10px;
-  -webkit-app-region: no-drag;
   transition: color var(--transition);
 }
 
