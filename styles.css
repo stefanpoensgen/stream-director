@@ -15,6 +15,8 @@
   --green: #00e676;
   --red: #ff5252; /* red text on dark: 5.8:1 */
   --red-strong: #c62828; /* fill behind white text: 5.6:1 */
+  --twitch: #bf94ff; /* Twitch purple, light enough for dark backgrounds: 8.3:1 on --bg */
+  --twitch-dim: rgba(145, 70, 255, 0.35);
   --sidebar-w: 260px;
   --radius: 6px;
   --transition: 0.2s ease;
@@ -93,6 +95,8 @@ ul {
 
 .branding-buttons {
   display: flex;
+  flex-wrap: wrap; /* longer labels may take a second row in the narrow corner */
+  justify-content: center;
   gap: 6px;
 }
 
@@ -131,10 +135,25 @@ ul {
 }
 
 .sidebar-toggle:hover,
-.chat-btn:hover,
-.twitch-login-btn:hover {
+.chat-btn:hover {
   color: var(--accent-text);
   background: var(--surface-hover);
+}
+
+.sidebar-toggle.is-active {
+  color: var(--accent-text);
+  border-color: var(--accent-text);
+}
+
+/* Twitch purple — recognizable as the Twitch account at a glance */
+.twitch-login-btn {
+  color: var(--twitch);
+  border-color: var(--twitch);
+}
+
+.twitch-login-btn:hover {
+  color: var(--text);
+  background: var(--twitch-dim);
 }
 
 /* ─── Sidebar ────────────────────────────────────────────────────── */

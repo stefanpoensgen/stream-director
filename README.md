@@ -27,7 +27,7 @@ Download `StreamDirector-<version>.exe` from the [latest release](https://github
 
 ## Getting started
 
-1. Open the sidebar with **Menu** (bottom-left) or `S`.
+1. Open the channel list with **Menu** (bottom-left) or `S`; **Hide menu** closes it again.
 2. Add channels: type a name and press **+**, or use **Import** to paste a whole list (one per line). Ready-made lists for upcoming events are in the [Discussions](https://github.com/stefanpoensgen/stream-director/discussions).
 3. Switch channels on with the toggle next to their name. **LIVE** marks channels that are streaming right now.
 4. Click a channel (in the sidebar or a tile) to put it in focus — the focus is the only stream with sound.
@@ -63,7 +63,7 @@ Tips for a clean picture:
 | `F11`     | Fullscreen on/off                         |
 | `Escape`  | Close the import dialog                   |
 
-Buttons in the bottom-left corner: **Menu** (sidebar), **Chat** (chat of the focus in a popup) and **Login**/**Logout** (Twitch).
+Buttons in the bottom-left corner: **Menu** / **Hide menu** (channel list), **Chat** (chat of the focus in a popup) and **Twitch login** / **Twitch logout**.
 
 **Low latency** (switch at the bottom of the sidebar) uses Twitch's low-latency segments like the Twitch website: about 3–4 s less delay, but less buffer — turn it off if streams stutter on your connection.
 
@@ -84,7 +84,7 @@ At most 14 streams play at the same time. Switching on one more stops the one yo
 
 ## Twitch login and ads
 
-**Login** opens the Twitch login; the window closes by itself once you are logged in and all streams restart with your account. With a **Twitch Turbo** subscription they play without ads. Without a login everything works too, with the usual Twitch ads. **Logout** removes the login again.
+**Twitch login** opens the Twitch login; the window closes by itself once you are logged in and all streams restart with your account. With a **Twitch Turbo** subscription they play without ads. Without a login everything works too, with the usual Twitch ads. **Twitch logout** removes the login again.
 
 ## Troubleshooting
 

@@ -391,8 +391,8 @@ async function refreshLoginState() {
     return;
   }
 
-  dom.twitchLogin.textContent = isLoggedIn ? 'Logout' : 'Login';
-  dom.twitchLogin.title = isLoggedIn ? 'Twitch Logout' : 'Twitch Login';
+  dom.twitchLogin.textContent = isLoggedIn ? 'Twitch logout' : 'Twitch login';
+  dom.twitchLogin.title = isLoggedIn ? 'Log out of Twitch' : 'Log in with your Twitch account';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -763,7 +763,13 @@ function toggleSidebar() {
 }
 
 function applySidebarState() {
-  dom.app.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
+  const isOpen = !state.sidebarCollapsed;
+  dom.app.classList.toggle('sidebar-collapsed', !isOpen);
+
+  // The button says what it does next — "Menu" alone did not tell that it also closes the menu
+  dom.sidebarToggle.textContent = isOpen ? 'Hide menu' : 'Menu';
+  dom.sidebarToggle.title = isOpen ? 'Hide the channel list (S)' : 'Show the channel list (S)';
+  dom.sidebarToggle.classList.toggle('is-active', isOpen);
 }
 
 // ═══════════════════════════════════════════════════════════════════
