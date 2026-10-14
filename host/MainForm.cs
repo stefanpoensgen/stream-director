@@ -20,6 +20,7 @@ internal sealed class MainForm : Form
     private const string ToggleFullscreenMessage = "toggle-fullscreen";
     private const string TwitchUrl = "https://www.twitch.tv";
     private const string TwitchAuthCookie = "auth-token";
+    private const string TwitchLoginPath = "/login";
     private const string GitHubUrlPrefix = "https://github.com/";
 
     // Autoplay with sound for the focused stream without a click first
@@ -28,6 +29,8 @@ internal sealed class MainForm : Form
     private static readonly Color BackgroundColor = ColorTranslator.FromHtml("#0a0a0f");
 
     private readonly bool _isDev;
+    private CoreWebView2Environment? _environment;
+    private LoginForm? _loginForm;
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = BackgroundColor };
 
     public MainForm(bool isDev)
@@ -64,6 +67,7 @@ internal sealed class MainForm : Form
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StreamDirector", "WebView2");
         var options = new CoreWebView2EnvironmentOptions(BrowserArguments);
         var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
+        _environment = environment;
         await _webView.EnsureCoreWebView2Async(environment);
 
         var core = _webView.CoreWebView2;
@@ -110,16 +114,50 @@ internal sealed class MainForm : Form
         return cookies.FirstOrDefault(cookie => cookie.Name == TwitchAuthCookie)?.Value;
     }
 
-    private static void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs args)
+    private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs args)
     {
-        var host = new Uri(args.Uri).Host;
-        var isTwitch = host == "twitch.tv" || host.EndsWith(".twitch.tv", StringComparison.Ordinal);
+        var uri = new Uri(args.Uri);
+        var isTwitch = uri.Host == "twitch.tv" || uri.Host.EndsWith(".twitch.tv", StringComparison.Ordinal);
 
-        // Twitch popups (login, chat) open as WebView2 windows sharing our cookies
+        if (isTwitch && uri.AbsolutePath.StartsWith(TwitchLoginPath, StringComparison.Ordinal))
+        {
+            args.Handled = true;
+            ShowLogin(args.Uri);
+            return;
+        }
+
+        // Other Twitch popups (chat) open as WebView2 windows sharing our cookies
         if (isTwitch) return;
 
         args.Handled = true;
         if (args.Uri.StartsWith(GitHubUrlPrefix, StringComparison.Ordinal)) Process.Start(args.Uri);
+    }
+
+    /// <summary>
+    /// Non-modal on purpose: a nested message loop (ShowDialog) started from a WebView2 callback
+    /// stops WebView2 from delivering further callbacks — the login page would never load.
+    /// </summary>
+    private async void ShowLogin(string loginUrl)
+    {
+        if (_loginForm is not null)
+        {
+            _loginForm.Activate();
+            return;
+        }
+
+        var tokenBefore = await GetTwitchAuthTokenAsync();
+        var login = new LoginForm(_environment!, loginUrl, async () => await GetTwitchAuthTokenAsync() is not null, Icon);
+        _loginForm = login;
+
+        login.FormClosed += async (_, _) =>
+        {
+            _loginForm = null;
+            login.Dispose();
+
+            // Playlists requested before the login are anonymous — reload so Turbo applies to all streams
+            if (login.LoggedIn && await GetTwitchAuthTokenAsync() != tokenBefore) _webView.CoreWebView2.Reload();
+        };
+        login.Show(this);
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
