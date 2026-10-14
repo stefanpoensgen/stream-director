@@ -12,6 +12,7 @@ const TILE_MIN_HEIGHT = 360;
 const BACK_BUFFER_SECONDS = 10;
 const OFFLINE_RETRY_MS = 30_000;
 const ERROR_RETRY_MS = 5_000;
+const HTTP_FORBIDDEN = 403;
 const HTTP_NOT_FOUND = 404;
 
 function findSourceLevel(levels) {
@@ -35,9 +36,10 @@ function findTileLevel(levels) {
 
 /**
  * Creates a muted tile player inside `container`.
- * `onOnline` / `onOffline` report whether the channel is streaming.
+ * `onOnline` / `onOffline` report whether the channel is streaming,
+ * `onUnavailable` that it streams but cannot be played (subscriber-only, geo-blocked).
  */
-export function createPlayer(channel, container, { onOnline, onOffline }) {
+export function createPlayer(channel, container, { onOnline, onOffline, onUnavailable }) {
   const video = document.createElement('video');
   video.muted = true;
   video.autoplay = true;
@@ -47,6 +49,7 @@ export function createPlayer(channel, container, { onOnline, onOffline }) {
   let levels = null;
   let isFocused = false;
   let retryTimer = null;
+  let isDestroyed = false;
 
   const desiredLevel = () => (isFocused ? levels.source : levels.tile);
 
@@ -68,9 +71,12 @@ export function createPlayer(channel, container, { onOnline, onOffline }) {
         return;
       }
 
-      const isOffline = data.response?.code === HTTP_NOT_FOUND;
-      if (isOffline) onOffline();
-      restartAfter(isOffline ? OFFLINE_RETRY_MS : ERROR_RETRY_MS);
+      const status = data.response?.code;
+      if (status === HTTP_NOT_FOUND) onOffline();
+      if (status === HTTP_FORBIDDEN) onUnavailable();
+
+      const isPermanent = status === HTTP_NOT_FOUND || status === HTTP_FORBIDDEN;
+      restartAfter(isPermanent ? OFFLINE_RETRY_MS : ERROR_RETRY_MS);
     });
 
     hls.loadSource(`/api/playlist/${channel}.m3u8`);
@@ -82,16 +88,22 @@ export function createPlayer(channel, container, { onOnline, onOffline }) {
     hls = null;
   }
 
+  /** Exactly one pending restart at a time — an error and `ended` may both ask for one. */
   function restartAfter(delayMs) {
+    if (isDestroyed) return;
+
     stop();
+    clearTimeout(retryTimer);
     retryTimer = setTimeout(start, delayMs);
   }
 
   // Twitch ends the playlist when the broadcast stops
-  video.addEventListener('ended', () => {
+  function onEnded() {
     onOffline();
     restartAfter(OFFLINE_RETRY_MS);
-  });
+  }
+
+  video.addEventListener('ended', onEnded);
 
   start();
 
@@ -119,7 +131,9 @@ export function createPlayer(channel, container, { onOnline, onOffline }) {
     },
 
     destroy() {
+      isDestroyed = true;
       clearTimeout(retryTimer);
+      video.removeEventListener('ended', onEnded);
       stop();
       video.remove();
     },

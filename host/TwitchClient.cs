@@ -13,6 +13,13 @@ using System.Web.Script.Serialization;
 
 namespace StreamDirector;
 
+internal enum PlaylistStatus
+{
+    Available,
+    Offline,
+    Forbidden, // live, but not playable (subscriber-only, geo-blocked)
+}
+
 internal sealed class TwitchClient
 {
     private const string GqlUrl = "https://gql.twitch.tv/gql";
@@ -30,7 +37,6 @@ internal sealed class TwitchClient
         """;
 
     private static readonly Regex ChannelNamePattern = new("^[a-z0-9_]{1,25}$");
-    private static readonly HashSet<HttpStatusCode> OfflineStatusCodes = [HttpStatusCode.Forbidden, HttpStatusCode.NotFound];
 
     private readonly HttpClient _http = new();
     private readonly JavaScriptSerializer _json = new();
@@ -56,13 +62,13 @@ internal sealed class TwitchClient
     }
 
     /// <summary>
-    /// Fetches the HLS master playlist of a channel, or null when it is offline.
+    /// Fetches the HLS master playlist of a channel.
     /// With the auth token of a Twitch Turbo account the stream comes without ads.
     /// </summary>
-    public async Task<string?> FetchMasterPlaylistAsync(string channel, string? authToken)
+    public async Task<(PlaylistStatus Status, string? Playlist)> FetchMasterPlaylistAsync(string channel, string? authToken)
     {
         var token = await FetchPlaybackTokenAsync(channel, authToken);
-        if (token is null) return null;
+        if (token is null) return (PlaylistStatus.Offline, null);
 
         var query = new Dictionary<string, string>
         {
@@ -77,10 +83,11 @@ internal sealed class TwitchClient
         var queryString = string.Join("&", query.Select(pair => $"{pair.Key}={Uri.EscapeDataString(pair.Value)}"));
 
         using var response = await _http.GetAsync($"{UsherUrl}/{channel}.m3u8?{queryString}");
-        if (OfflineStatusCodes.Contains(response.StatusCode)) return null;
+        if (response.StatusCode == HttpStatusCode.NotFound) return (PlaylistStatus.Offline, null);
+        if (response.StatusCode == HttpStatusCode.Forbidden) return (PlaylistStatus.Forbidden, null);
         if (!response.IsSuccessStatusCode) throw new HttpRequestException($"Twitch usher responded {(int)response.StatusCode}");
 
-        return await response.Content.ReadAsStringAsync();
+        return (PlaylistStatus.Available, await response.Content.ReadAsStringAsync());
     }
 
     private async Task<IDictionary?> FetchPlaybackTokenAsync(string channel, string? authToken)

@@ -51,7 +51,7 @@ internal sealed class AppRequestHandler(
 
         try
         {
-            args.Response = await RouteAsync(new Uri(args.Request.Uri), args.Request.Method);
+            args.Response = await RouteAsync(new Uri(args.Request.Uri), args.Request);
         }
         catch (Exception error)
         {
@@ -64,11 +64,11 @@ internal sealed class AppRequestHandler(
         }
     }
 
-    private async Task<CoreWebView2WebResourceResponse> RouteAsync(Uri uri, string method)
+    private async Task<CoreWebView2WebResourceResponse> RouteAsync(Uri uri, CoreWebView2WebResourceRequest request)
     {
         if (uri.AbsolutePath == LiveRoute) return await LiveAsync(uri);
         if (uri.AbsolutePath == AuthRoute) return await AuthAsync();
-        if (uri.AbsolutePath == LogoutRoute) return await LogoutAsync(method);
+        if (uri.AbsolutePath == LogoutRoute) return await LogoutAsync(request);
 
         var playlistMatch = PlaylistRoute.Match(uri.AbsolutePath);
         if (playlistMatch.Success) return await PlaylistAsync(playlistMatch.Groups[1].Value);
@@ -92,18 +92,23 @@ internal sealed class AppRequestHandler(
     {
         if (!TwitchClient.IsValidChannelName(channel)) return Text(400, "Invalid channel name");
 
-        var playlist = await twitch.FetchMasterPlaylistAsync(channel, await session.GetAuthTokenAsync());
-        if (playlist is null) return Text(404, "Channel offline");
+        var (status, playlist) = await twitch.FetchMasterPlaylistAsync(channel, await session.GetAuthTokenAsync());
 
-        return Response(200, playlist, PlaylistContentType);
+        return status switch
+        {
+            PlaylistStatus.Offline => Text(404, "Channel offline"),
+            PlaylistStatus.Forbidden => Text(403, "Playback not allowed"),
+            _ => Response(200, playlist!, PlaylistContentType),
+        };
     }
 
     private async Task<CoreWebView2WebResourceResponse> AuthAsync() =>
         Response(200, _json.Serialize(new { loggedIn = await session.IsLoggedInAsync() }), JsonContentType);
 
-    private async Task<CoreWebView2WebResourceResponse> LogoutAsync(string method)
+    private async Task<CoreWebView2WebResourceResponse> LogoutAsync(CoreWebView2WebResourceRequest request)
     {
-        if (method != "POST") return Text(405, "Method not allowed");
+        if (request.Method != "POST") return Text(405, "Method not allowed");
+        if (!IsFromApp(request)) return Text(403, "Forbidden");
 
         await session.LogoutAsync();
 
@@ -119,6 +124,10 @@ internal sealed class AppRequestHandler(
 
         return Response(200, content, ContentTypes[Path.GetExtension(file)]);
     }
+
+    /// <summary>State-changing requests must come from the app page itself (browsers always send Origin on POST).</summary>
+    private static bool IsFromApp(CoreWebView2WebResourceRequest request) =>
+        request.Headers.Contains("Origin") && request.Headers.GetHeader("Origin") == Origin;
 
     private static string QueryValue(Uri uri, string key)
     {

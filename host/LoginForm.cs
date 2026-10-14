@@ -2,6 +2,7 @@
 // as soon as the login cookie exists — Twitch would otherwise just redirect to its homepage.
 
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -58,9 +59,17 @@ internal sealed class LoginForm : Form
 
     private async Task CloseWhenLoggedInAsync()
     {
-        if (LoggedIn || !await _session.IsLoggedInAsync()) return;
+        try
+        {
+            if (LoggedIn || !await _session.IsLoggedInAsync() || IsDisposed) return;
 
-        LoggedIn = true;
-        Close();
+            LoggedIn = true;
+            Close();
+        }
+        catch (Exception error)
+        {
+            // The window stays open — the user can still close it by hand
+            Trace.WriteLine($"Login check failed: {error.Message}");
+        }
     }
 }

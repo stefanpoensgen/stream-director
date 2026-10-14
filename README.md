@@ -66,6 +66,7 @@ Streams are played by a built-in HLS player ([hls.js](https://github.com/video-d
 - Tiles play **360p**, the focus plays **source** quality
 - Focus switches are seamless: the quality changes at the next 2-second segment boundary while playback continues — no gap in picture or sound
 - Players are never reloaded or re-parented on focus switches, only CSS classes, quality and mute change
+- Channels that are live but cannot be played (subscriber-only, geo-blocked) show **UNAVAILABLE** instead of OFFLINE
 
 > Playback relies on Twitch's unofficial web API (the same one [streamlink](https://github.com/streamlink/streamlink) uses). It can break if Twitch changes it.
 

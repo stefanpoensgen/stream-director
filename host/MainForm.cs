@@ -71,6 +71,7 @@ internal sealed class MainForm : Form
         var core = _webView.CoreWebView2;
         core.Settings.IsNonClientRegionSupportEnabled = true; // CSS app-region: drag moves the window
         core.Settings.AreDevToolsEnabled = _isDev;
+        _webView.AllowExternalDrop = false; // a dropped file or link would replace the app page
 
         var webRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot");
         _session = new TwitchSession(core.CookieManager);
@@ -78,6 +79,7 @@ internal sealed class MainForm : Form
         core.AddWebResourceRequestedFilter($"{AppRequestHandler.Origin}/*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += requestHandler.OnWebResourceRequested;
 
+        core.NavigationStarting += OnNavigationStarting;
         core.NewWindowRequested += OnNewWindowRequested;
         core.WindowCloseRequested += (_, _) => Close();
         core.WebMessageReceived += OnWebMessageReceived;
@@ -105,9 +107,22 @@ internal sealed class MainForm : Form
             """;
     }
 
+    private static bool IsAppUrl(string url) => url.StartsWith($"{AppRequestHandler.Origin}/", StringComparison.Ordinal);
+
+    /// <summary>The main view only ever shows the app — external pages must not inherit the host API.</summary>
+    private static void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs args)
+    {
+        if (!IsAppUrl(args.Uri)) args.Cancel = true;
+    }
+
     private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs args)
     {
-        var uri = new Uri(args.Uri);
+        if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri))
+        {
+            args.Handled = true;
+            return;
+        }
+
         var isTwitch = uri.Host == "twitch.tv" || uri.Host.EndsWith(".twitch.tv", StringComparison.Ordinal);
 
         if (isTwitch && uri.AbsolutePath.StartsWith(TwitchLoginPath, StringComparison.Ordinal))
@@ -136,24 +151,55 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var tokenBefore = await _session!.GetAuthTokenAsync();
-        var login = new LoginForm(_environment!, loginUrl, _session, Icon);
+        // Claim the slot before the first await — a second click must not open another window
+        var login = new LoginForm(_environment!, loginUrl, _session!, Icon);
         _loginForm = login;
 
-        login.FormClosed += async (_, _) =>
+        try
+        {
+            var tokenBefore = await _session!.GetAuthTokenAsync();
+            login.FormClosed += async (_, _) => await OnLoginClosedAsync(login, tokenBefore);
+            login.Show(this);
+        }
+        catch (Exception error)
         {
             _loginForm = null;
             login.Dispose();
+            MessageBox.Show(this, $"Twitch login could not be opened:\n{error.Message}", Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
 
+    private async Task OnLoginClosedAsync(LoginForm login, string? tokenBefore)
+    {
+        if (_loginForm == login) _loginForm = null;
+        login.Dispose();
+
+        try
+        {
             // Playlists requested before the login are anonymous — reload so Turbo applies to all streams
-            if (login.LoggedIn && await _session.GetAuthTokenAsync() != tokenBefore) _webView.CoreWebView2.Reload();
-        };
-        login.Show(this);
+            if (login.LoggedIn && await _session!.GetAuthTokenAsync() != tokenBefore) _webView.CoreWebView2.Reload();
+        }
+        catch (Exception error)
+        {
+            Trace.WriteLine($"Reload after login failed: {error.Message}");
+        }
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
     {
-        if (args.TryGetWebMessageAsString() == ToggleFullscreenMessage) ToggleFullscreen();
+        if (!IsAppUrl(args.Source)) return;
+
+        string message;
+        try
+        {
+            message = args.TryGetWebMessageAsString();
+        }
+        catch (ArgumentException)
+        {
+            return; // not a string message — nothing the host understands
+        }
+
+        if (message == ToggleFullscreenMessage) ToggleFullscreen();
     }
 
     /// <summary>A maximized borderless window covers the whole screen including the taskbar.</summary>

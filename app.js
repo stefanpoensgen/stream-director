@@ -13,6 +13,8 @@ const DEFAULT_VOLUME = 1;
 const VOLUME_STEP_PERCENT = 5;
 const VOLUME_OSD_DURATION_MS = 1200;
 const TWITCH_LOGIN_URL = 'https://www.twitch.tv/login';
+// Same rule as the host — one invalid name would make it reject every live check
+const CHANNEL_NAME_PATTERN = /^[a-z0-9_]{1,25}$/;
 const IS_DEV = new URL(location.href).searchParams.has('dev');
 
 // ─── Application State ─────────────────────────────────────────────
@@ -140,22 +142,44 @@ function saveState() {
   }, 300);
 }
 
+function isValidChannelName(name) {
+  return typeof name === 'string' && CHANNEL_NAME_PATTERN.test(name);
+}
+
+/** Saved channels are untrusted input: keep valid, unique names and in-range volumes only. */
+function restoreChannels(saved) {
+  if (!Array.isArray(saved)) return [];
+
+  const seen = new Set();
+  const channels = [];
+  for (const entry of saved) {
+    const name = entry?.name;
+    if (!isValidChannelName(name) || seen.has(name)) continue;
+
+    seen.add(name);
+    const channel = { name };
+    if (Number.isFinite(entry.volume)) channel.volume = Math.min(1, Math.max(0, entry.volume));
+    channels.push(channel);
+  }
+
+  return channels;
+}
+
 function restoreState() {
   try {
     const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!data) return;
 
-    if (Array.isArray(data.channels)) {
-      state.channels = data.channels;
-    }
+    state.channels = restoreChannels(data.channels);
 
     const valid = new Set(state.channels.map((c) => c.name));
+    const knownNames = (list) => (Array.isArray(list) ? list.filter((n) => valid.has(n)) : []);
 
-    state.lru = (data.lru ?? []).filter((n) => valid.has(n));
-    state.liveSet = new Set((data.live ?? []).filter((n) => valid.has(n)));
+    state.lru = knownNames(data.lru);
+    state.liveSet = new Set(knownNames(data.live));
     state.focus = valid.has(data.focus) ? data.focus : null;
     state.lastFocus = valid.has(data.lastFocus) ? data.lastFocus : null;
-    state.sidebarCollapsed = data.sidebarCollapsed ?? false;
+    state.sidebarCollapsed = data.sidebarCollapsed === true;
 
     // Trim live set to max
     while (state.liveSet.size > DEFAULT_MAX_PLAYERS) {
@@ -280,7 +304,7 @@ function recallFocus() {
 /** Add a new channel to the pool. Returns true on success. */
 function addChannel(name) {
   const normalized = name.trim().toLowerCase().replace(/\s+/g, '');
-  if (!normalized || !/^[a-z0-9_]+$/.test(normalized)) return false;
+  if (!isValidChannelName(normalized)) return false;
   if (state.channels.some((c) => c.name === normalized)) return false;
 
   state.channels.push({ name: normalized });
@@ -298,7 +322,7 @@ function importChannels(text) {
   const names = text
     .split(/[\n,]+/)
     .map((s) => s.trim().toLowerCase().replace(/\s+/g, ''))
-    .filter((s) => s && /^[a-z0-9_]+$/.test(s));
+    .filter(isValidChannelName);
 
   const existing = new Set(state.channels.map((c) => c.name));
   let added = 0;
@@ -637,7 +661,6 @@ function syncPlayers() {
       entry.player.destroy();
       entry.container.style.display = 'none';
       staleContainers.push(entry.container);
-      onlineSet.delete(name);
       players.delete(name);
     }
   }
@@ -724,9 +747,15 @@ function createPlayerSlot(name) {
       renderSidebar();
     },
     onOffline() {
+      badge.textContent = 'OFFLINE';
       badge.classList.remove('hidden');
       onlineSet.delete(name);
       renderSidebar();
+    },
+    onUnavailable() {
+      // Live, but Twitch refuses playback (subscriber-only, geo-blocked)
+      badge.textContent = 'UNAVAILABLE';
+      badge.classList.remove('hidden');
     },
   });
 
