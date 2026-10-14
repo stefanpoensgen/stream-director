@@ -67,6 +67,8 @@ Buttons in the bottom-left corner: **Menu** (sidebar), **Chat** (chat of the foc
 
 **Low latency** (switch at the bottom of the sidebar) uses Twitch's low-latency segments like the Twitch website: about 3–4 s less delay, but less buffer — turn it off if streams stutter on your connection.
 
+Hovering the focus shows its name with the resolution actually on screen (e.g. `1080p60`), its volume slider and mute button.
+
 **Volume** is set per channel and remembered: hover the focus for its slider and mute button, use the slider in the sidebar, or press `↑`/`↓` and `M`. Muting keeps the volume; changing the volume unmutes.
 
 ## Layout

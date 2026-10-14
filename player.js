@@ -201,15 +201,22 @@ export function createPlayer(
       audio.apply(isFocused, volume);
     },
 
+    /** Rendition actually on screen, e.g. "1080p60"; null before the first frame. */
+    resolutionLabel() {
+      if (!hls || !video.videoHeight) return null;
+
+      const frameRate = hls.levels[hls.currentLevel]?.frameRate ?? 0;
+
+      return `${video.videoHeight}p${Math.round(frameRate)}`;
+    },
+
     /**
-     * Dev badge: displayed rendition and delay behind the live broadcast,
+     * Dev badge: rendition and delay behind the live broadcast,
      * e.g. "1080p60 · 6.2 s" (from the stream's PROGRAM-DATE-TIME).
      */
     qualityLabel() {
-      if (!hls || !video.videoHeight) return '…';
-
-      const frameRate = hls.levels[hls.currentLevel]?.frameRate ?? 0;
-      const rendition = `${video.videoHeight}p${Math.round(frameRate)}`;
+      const rendition = this.resolutionLabel();
+      if (!rendition) return '…';
       if (!hls.playingDate) return rendition;
 
       const delaySeconds = (Date.now() - hls.playingDate.getTime()) / 1000;

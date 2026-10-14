@@ -10,6 +10,7 @@ const STORAGE_KEY = 'stream-director';
 const DEFAULT_MAX_PLAYERS = 14;
 const LIVE_CHECK_INTERVAL_MS = 60_000;
 const QUALITY_BADGE_INTERVAL_MS = 2000;
+const RESOLUTION_REFRESH_MS = 1000;
 const DEFAULT_VOLUME = 1;
 const VOLUME_STEP_PERCENT = 5;
 const VOLUME_OSD_DURATION_MS = 1200;
@@ -35,7 +36,7 @@ const state = {
 // One audio relay for all players, created in init() (null outside the WebView2 host)
 let audioRelay = null;
 
-// Maps channel name → { container, player, volumeOsd, volumeControl, qualityBadge: HTMLElement|null }
+// Maps channel name → { container, player, resolution, volumeOsd, volumeControl, qualityBadge: HTMLElement|null }
 const players = new Map();
 
 // Tracks which channels are actually streaming
@@ -84,6 +85,7 @@ function init() {
   refreshFollowedLive();
   setInterval(refreshFollowedLive, LIVE_CHECK_INTERVAL_MS);
 
+  setInterval(updateFocusResolution, RESOLUTION_REFRESH_MS);
   if (IS_DEV) {
     setInterval(updateQualityBadges, QUALITY_BADGE_INTERVAL_MS);
   }
@@ -934,6 +936,10 @@ function createPlayerSlot(name) {
   const label = document.createElement('div');
   label.className = 'player-label';
   label.textContent = name;
+  // Shown with the name while hovering the focus (see updateFocusResolution)
+  const resolution = document.createElement('span');
+  resolution.className = 'player-resolution';
+  label.appendChild(resolution);
   container.appendChild(label);
 
   // Offline badge
@@ -995,13 +1001,22 @@ function createPlayerSlot(name) {
 
   player.setVolume(getAudibleVolume(name));
 
-  players.set(name, { container, player, volumeOsd, volumeControl, qualityBadge });
+  players.set(name, { container, player, resolution, volumeOsd, volumeControl, qualityBadge });
   syncVolumeControls(name);
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Quality Debug Badge (dev mode)
+// Resolution on the focus label + quality debug badge (dev mode)
 // ═══════════════════════════════════════════════════════════════════
+
+/** The focus label shows the rendition on screen — it changes from 360p to source after a switch. */
+function updateFocusResolution() {
+  const entry = players.get(state.focus);
+  if (!entry) return;
+
+  const rendition = entry.player.resolutionLabel();
+  entry.resolution.textContent = rendition ? ` · ${rendition}` : '';
+}
 
 function updateQualityBadges() {
   for (const [, entry] of players) {

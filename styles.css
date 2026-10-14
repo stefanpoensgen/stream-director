@@ -705,6 +705,15 @@ ul {
   font-variant-numeric: tabular-nums;
 }
 
+.player-resolution {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.player-slot.is-tile .player-resolution {
+  display: none;
+}
+
 /* ─── Quality Debug Badge (dev mode) ─────────────────────────────── */
 .quality-badge {
   position: absolute;
