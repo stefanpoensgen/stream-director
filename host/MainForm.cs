@@ -88,8 +88,21 @@ internal sealed class MainForm : Form
         await _webView.EnsureCoreWebView2Async(environment);
 
         var core = _webView.CoreWebView2;
-        core.Settings.AreDevToolsEnabled = _isDev;
         _webView.AllowExternalDrop = false; // a dropped file or link would replace the app page
+
+        // An app, not a browser: no browser UI that would end up in the captured picture or break the layout.
+        // Dev mode keeps context menu and shortcuts (Inspect, F5).
+        core.Settings.AreDevToolsEnabled = _isDev;
+        core.Settings.AreBrowserAcceleratorKeysEnabled = _isDev; // Ctrl+F, Ctrl+P, F5 … (copy/paste keep working)
+        core.Settings.IsZoomControlEnabled = false;
+        core.Settings.IsPinchZoomEnabled = false;
+        core.Settings.IsStatusBarEnabled = false;
+        core.Settings.IsSwipeNavigationEnabled = false;
+        core.ContextMenuRequested += (_, args) =>
+        {
+            // Video menu ("show all controls", picture-in-picture, …) off; text fields keep cut/copy/paste
+            if (!_isDev && !args.ContextMenuTarget.IsEditable) args.Handled = true;
+        };
 
         _session = new TwitchSession(core.CookieManager);
         var requestHandler = new AppRequestHandler(environment, new TwitchClient(), _session, _follows);
