@@ -3,17 +3,27 @@
   --bg: #0a0a0f;
   --surface: #131319;
   --surface-hover: #1a1a24;
-  --border: #1a3a3f;
-  --accent: #2d7987;
+  --border: #4b6f76; /* control outlines: 3.6:1 on --bg */
+  --tile-border: #1a3a3f; /* video tiles: part of the captured picture, kept subtle */
+  --accent: #2d7987; /* fill behind white text: 5.0:1 */
+  --accent-hover: #236370; /* darker on hover so white text stays readable: 6.8:1 */
+  --accent-text: #5ec4d3; /* accent text, lines and focus ring on dark: ≥ 7.9:1 */
   --accent-dim: rgba(11, 52, 58, 0.5);
-  --accent-hover: #75b5be;
   --text: #e8e8f0;
-  --text-dim: #7a7a92;
+  --text-dim: #a3a3ba; /* secondary text: ≥ 7:1 */
+  --toggle-off: #6a6a82; /* 3.5:1 on --surface */
   --green: #00e676;
-  --red: #ff5252;
+  --red: #ff5252; /* red text on dark: 5.8:1 */
+  --red-strong: #c62828; /* fill behind white text: 5.6:1 */
   --sidebar-w: 260px;
   --radius: 6px;
   --transition: 0.2s ease;
+}
+
+/* ─── Keyboard focus ─────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
 }
 
 /* ─── Reset ──────────────────────────────────────────────────────── */
@@ -118,9 +128,8 @@ ul {
   position: absolute;
   top: 4px;
   right: 6px;
-  font-size: 9px;
-  color: var(--accent);
-  opacity: 0.6;
+  font-size: 10px;
+  color: var(--accent-text);
 }
 
 .branding-buttons {
@@ -167,7 +176,7 @@ ul {
 .sidebar-toggle:hover,
 .chat-btn:hover,
 .twitch-login-btn:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text);
   background: var(--surface-hover);
 }
 
@@ -200,7 +209,7 @@ ul {
 }
 
 .logo-accent {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Add channel form */
@@ -225,7 +234,7 @@ ul {
 
 .add-channel-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--accent-text);
 }
 
 .add-channel-btn {
@@ -291,7 +300,7 @@ ul {
 
 .channel-item.is-focus {
   background: var(--accent-dim);
-  border-left-color: var(--accent);
+  border-left-color: var(--accent-text);
 }
 
 /* Live toggle switch */
@@ -314,7 +323,7 @@ ul {
   display: block;
   width: 100%;
   height: 100%;
-  background: #333;
+  background: var(--toggle-off);
   border-radius: 9px;
   transition: background var(--transition);
 }
@@ -353,10 +362,10 @@ ul {
 }
 
 .channel-name:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text);
 }
 .channel-item.is-focus .channel-name {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -364,11 +373,11 @@ ul {
 .live-badge {
   flex-shrink: 0;
   padding: 1px 6px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
   color: #fff;
-  background: var(--red);
+  background: var(--red-strong);
   border-radius: 3px;
 }
 
@@ -380,7 +389,7 @@ ul {
 .channel-volume {
   flex-shrink: 0;
   width: 56px;
-  accent-color: var(--accent);
+  accent-color: var(--accent-text);
   cursor: pointer;
 }
 
@@ -433,7 +442,7 @@ ul {
 }
 
 .import-btn:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text);
   background: var(--surface-hover);
 }
 
@@ -486,7 +495,7 @@ ul {
 }
 .import-textarea:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--accent-text);
 }
 
 .import-actions {
@@ -594,11 +603,11 @@ ul {
 /* ─── Tile Slot ──────────────────────────────────────────────────── */
 .player-slot.is-tile {
   cursor: pointer;
-  border: 2px solid var(--border);
+  border: 2px solid var(--tile-border);
 }
 
 .player-slot.is-tile:hover {
-  border-color: var(--accent);
+  border-color: var(--accent-text);
   box-shadow: 0 0 12px var(--accent-dim);
 }
 
@@ -659,7 +668,7 @@ ul {
 
 .volume-control-slider {
   width: 140px;
-  accent-color: var(--accent-hover);
+  accent-color: var(--accent-text);
   cursor: pointer;
 }
 
@@ -697,9 +706,9 @@ ul {
   top: 6px;
   right: 6px;
   padding: 2px 7px;
-  background: var(--red);
+  background: var(--red-strong);
   color: #fff;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
