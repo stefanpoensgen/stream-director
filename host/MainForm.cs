@@ -35,7 +35,7 @@ internal sealed class MainForm : Form
         _isDev = isDev;
 
         Text = "StreamDirector";
-        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        Icon = NativeMethods.LoadApplicationIcon();
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = BackgroundColor;
