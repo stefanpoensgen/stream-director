@@ -2,22 +2,19 @@
 // StreamDirector — Multiview Twitch Dashboard
 // ═══════════════════════════════════════════════════════════════════
 
+import { createPlayer } from './player.js';
+
 // ─── Configuration ──────────────────────────────────────────────────
 const STORAGE_KEY = 'stream-director';
 const DEFAULT_MAX_PLAYERS = 14;
-const PARENT_DOMAIN = location.hostname || 'localhost';
-const START_ALL_DELAY_MS = 1500;
 const LIVE_CHECK_INTERVAL_MS = 60_000;
-const TWITCH_GQL_URL = 'https://gql.twitch.tv/gql';
-const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
-const GQL_BATCH_SIZE = 35;
-const IS_ELECTRON = navigator.userAgent.includes('Electron');
+const QUALITY_BADGE_INTERVAL_MS = 2000;
 const IS_DEV = new URL(location.href).searchParams.has('dev');
 
 // ─── Application State ─────────────────────────────────────────────
 const state = {
   channels: [], // persisted in localStorage
-  liveSet: new Set(), // channel names with active embeds
+  liveSet: new Set(), // channel names with active players
   focus: null, // currently focused channel name
   lru: [], // LRU tracking — most recently used at end
   lastFocus: null, // previous focus for 'F' hotkey recall
@@ -25,10 +22,10 @@ const state = {
 };
 
 // ─── Player Registry ────────────────────────────────────────────────
-// Maps channel name → { container: HTMLElement, player: Twitch.Player|null }
+// Maps channel name → { container: HTMLElement, player, qualityBadge: HTMLElement|null }
 const players = new Map();
 
-// Tracks which embedded channels are actually streaming
+// Tracks which channels are actually streaming
 const onlineSet = new Set();
 
 // ─── DOM Cache ──────────────────────────────────────────────────────
@@ -42,7 +39,6 @@ function cacheDom() {
   dom.sidebarToggle = document.getElementById('sidebar-toggle');
   dom.addChannelForm = document.getElementById('add-channel-form');
   dom.addChannelInput = document.getElementById('add-channel-input');
-  dom.startAll = document.getElementById('start-all');
   dom.twitchLogin = document.getElementById('twitch-login');
   dom.branding = document.getElementById('branding');
   dom.chatBtn = document.getElementById('chat-btn');
@@ -68,69 +64,38 @@ function init() {
   syncPlayers();
   bindEvents();
 
-  // Live check only works in Electron (webSecurity: false bypasses CORS)
-  if (IS_ELECTRON) {
-    checkAllLive();
-    setInterval(checkAllLive, LIVE_CHECK_INTERVAL_MS);
-  }
+  checkAllLive();
+  setInterval(checkAllLive, LIVE_CHECK_INTERVAL_MS);
 
-  // Quality debug badges (dev mode only)
   if (IS_DEV) {
-    setInterval(updateQualityBadges, 2000);
+    setInterval(updateQualityBadges, QUALITY_BADGE_INTERVAL_MS);
   }
 }
 
-/** Check a single channel's live status via Twitch GQL API. */
-async function checkIfLive(name) {
+/** Ask the main process which of `names` are streaming. Returns null on failure. */
+async function fetchLiveChannels(names) {
+  if (names.length === 0) return new Set();
+
   try {
-    const res = await fetch(TWITCH_GQL_URL, {
-      method: 'POST',
-      headers: { 'Client-ID': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: `query { user(login: "${name}") { stream { id } } }` }),
-    });
-    const data = await res.json();
-    return !!data.data?.user?.stream;
+    const response = await fetch(`/api/live?channels=${names.join(',')}`);
+    if (!response.ok) return null;
+
+    return new Set(await response.json());
   } catch {
-    return false;
+    return null;
   }
 }
 
 let liveCheckRunning = false;
 
-/** Batch-check all channels via Twitch GQL API (single request per batch). */
+/** Refresh the online state of all channels; keeps the previous state on failure. */
 async function checkAllLive() {
   if (liveCheckRunning) return;
   liveCheckRunning = true;
 
   try {
-    const names = state.channels.map((ch) => ch.name);
-    const liveNames = new Set();
-
-    for (let i = 0; i < names.length; i += GQL_BATCH_SIZE) {
-      const batch = names.slice(i, i + GQL_BATCH_SIZE);
-      const aliases = batch.map(
-        (name, j) => `u${j}: user(login: "${name}") { login stream { id } }`,
-      );
-
-      try {
-        const res = await fetch(TWITCH_GQL_URL, {
-          method: 'POST',
-          headers: { 'Client-ID': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: `query { ${aliases.join(' ')} }` }),
-        });
-        const data = await res.json();
-        for (let j = 0; j < batch.length; j++) {
-          if (data.data?.[`u${j}`]?.stream) {
-            liveNames.add(batch[j]);
-          }
-        }
-      } catch {
-        // On failure, preserve previous state for this batch
-        for (const name of batch) {
-          if (onlineSet.has(name)) liveNames.add(name);
-        }
-      }
-    }
+    const liveNames = await fetchLiveChannels(state.channels.map((channel) => channel.name));
+    if (!liveNames) return;
 
     onlineSet.clear();
     for (const name of liveNames) {
@@ -269,8 +234,6 @@ function toggleLive(name) {
 function setFocus(name) {
   if (state.focus === name) return;
 
-  const prevFocus = state.focus;
-
   // Remember previous focus for 'F' recall
   if (state.focus) state.lastFocus = state.focus;
 
@@ -279,14 +242,6 @@ function setFocus(name) {
 
   state.focus = name;
   touchLru(name);
-
-  // Mute/unmute instantly
-  if (prevFocus && players.has(prevFocus)) {
-    players.get(prevFocus).player?.setMuted(true);
-  }
-  if (players.has(name)) {
-    players.get(name).player?.setMuted(false);
-  }
 
   // Update chat popup if open
   if (chatWindow && !chatWindow.closed) openChat();
@@ -324,12 +279,10 @@ function addChannel(name) {
   if (state.channels.some((c) => c.name === normalized)) return false;
 
   state.channels.push({ name: normalized });
-  if (IS_ELECTRON) {
-    checkIfLive(normalized).then((live) => {
-      if (live) onlineSet.add(normalized);
-      renderSidebar();
-    });
-  }
+  fetchLiveChannels([normalized]).then((liveNames) => {
+    if (liveNames?.has(normalized)) onlineSet.add(normalized);
+    renderSidebar();
+  });
   renderSidebar();
   saveState();
   return true;
@@ -355,7 +308,7 @@ function importChannels(text) {
   if (added > 0) {
     renderSidebar();
     saveState();
-    if (IS_ELECTRON) checkAllLive();
+    checkAllLive();
   }
   return added;
 }
@@ -427,46 +380,6 @@ function toggleSidebar() {
 
 function applySidebarState() {
   dom.app.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Start All — cycle each channel into focus briefly to trigger autoplay
-// ═══════════════════════════════════════════════════════════════════
-
-async function startAll() {
-  const ordered = getOrderedLiveChannels();
-  if (ordered.length === 0) return;
-
-  dom.startAll.disabled = true;
-  const originalFocus = state.focus;
-
-  for (const name of ordered) {
-    setFocus(name);
-    const entry = players.get(name);
-    if (entry?.player) entry.player.play();
-    await waitForPlaying(name);
-  }
-
-  // Restore original focus (or keep last if none was set)
-  setFocus(originalFocus ?? ordered[0]);
-  dom.startAll.disabled = false;
-}
-
-/** Wait until a player fires PLAYING, or timeout as fallback. */
-function waitForPlaying(name) {
-  return new Promise((resolve) => {
-    const entry = players.get(name);
-    if (!entry?.player) {
-      resolve();
-      return;
-    }
-    const timeout = setTimeout(resolve, START_ALL_DELAY_MS);
-    entry.player.addEventListener(Twitch.Player.PLAYING, function onPlay() {
-      clearTimeout(timeout);
-      entry.player.removeEventListener(Twitch.Player.PLAYING, onPlay);
-      resolve();
-    });
-  });
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -589,7 +502,7 @@ function updateGridLayout() {
 /**
  * Reconcile DOM players with desired state.
  * All players are direct children of .content (CSS Grid).
- * L-shape layout — pure class toggle, no iframe destroy.
+ * L-shape layout — pure class toggle, players are never re-parented.
  */
 function syncPlayers() {
   const shouldBeFocus = state.focus;
@@ -599,11 +512,7 @@ function syncPlayers() {
   for (const name of [...players.keys()]) {
     if (!state.liveSet.has(name)) {
       const entry = players.get(name);
-      if (entry.player) {
-        try {
-          entry.player.destroy();
-        } catch {}
-      }
+      entry.player.destroy();
       entry.container.style.display = 'none';
       staleContainers.push(entry.container);
       onlineSet.delete(name);
@@ -615,15 +524,16 @@ function syncPlayers() {
   const ordered = getOrderedLiveChannels();
   for (const name of ordered) {
     if (!players.has(name)) {
-      createPlayer(name);
+      createPlayerSlot(name);
     }
   }
 
-  // 3. Toggle focus / tile CSS classes
+  // 3. Toggle focus / tile CSS classes, quality and audio
   for (const [name, entry] of players) {
     const isFocus = name === shouldBeFocus;
     entry.container.classList.toggle('is-focus', isFocus);
     entry.container.classList.toggle('is-tile', !isFocus);
+    entry.player.setFocused(isFocus);
   }
 
   // 4. Update grid layout (stale containers are hidden, won't affect layout)
@@ -634,24 +544,11 @@ function syncPlayers() {
     el.remove();
   }
 
-  // 6. Re-ensure focus player is playing after grid settles
-  if (shouldBeFocus && players.has(shouldBeFocus)) {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const fe = players.get(shouldBeFocus);
-        if (fe?.player) {
-          fe.player.setMuted(false);
-          fe.player.play();
-        }
-      });
-    });
-  }
-
-  // 7. Toggle empty state
+  // 6. Toggle empty state
   dom.focusEmpty.classList.toggle('hidden', players.size > 0);
 }
 
-function createPlayer(name) {
+function createPlayerSlot(name) {
   const container = document.createElement('div');
   container.className = 'player-slot is-tile';
   container.dataset.channel = name;
@@ -679,51 +576,21 @@ function createPlayer(name) {
     container.appendChild(qualityBadge);
   }
 
-  // Twitch player target
-  const targetId = `pt-${name}-${Date.now()}`;
-  const target = document.createElement('div');
-  target.className = 'player-target';
-  target.id = targetId;
-  container.appendChild(target);
-
   // All players are direct grid children of .content
   dom.content.appendChild(container);
 
-  // Create Twitch.Player instance
-  let player = null;
-  if (typeof Twitch !== 'undefined' && Twitch.Player) {
-    try {
-      player = new Twitch.Player(targetId, {
-        channel: name,
-        parent: [PARENT_DOMAIN],
-        muted: true,
-        width: '100%',
-        height: '100%',
-        autoplay: true,
-      });
-
-      // Unmute focus when it starts playing
-      player.addEventListener(Twitch.Player.PLAYING, () => {
-        if (state.focus === name) player.setMuted(false);
-      });
-
-      player.addEventListener(Twitch.Player.OFFLINE, () => {
-        badge.classList.remove('hidden');
-        onlineSet.delete(name);
-        renderSidebar();
-      });
-      player.addEventListener(Twitch.Player.ONLINE, () => {
-        badge.classList.add('hidden');
-        onlineSet.add(name);
-        renderSidebar();
-      });
-    } catch (e) {
-      console.error(`Twitch.Player creation failed for "${name}":`, e);
-    }
-  } else if (!createPlayer._warned) {
-    createPlayer._warned = true;
-    console.warn('Twitch.Player API not available — running in preview mode.');
-  }
+  const player = createPlayer(name, container, {
+    onOnline() {
+      badge.classList.add('hidden');
+      onlineSet.add(name);
+      renderSidebar();
+    },
+    onOffline() {
+      badge.classList.remove('hidden');
+      onlineSet.delete(name);
+      renderSidebar();
+    },
+  });
 
   players.set(name, { container, player, qualityBadge });
 }
@@ -734,21 +601,7 @@ function createPlayer(name) {
 
 function updateQualityBadges() {
   for (const [, entry] of players) {
-    if (!entry.qualityBadge || !entry.player) continue;
-    try {
-      const stats = entry.player.getPlaybackStats();
-      const quality = entry.player.getQuality();
-      if (stats && stats.videoResolution) {
-        const h = stats.videoResolution.split('x')[1];
-        const fps = Math.round(stats.fps || 0);
-        const res = `${h}p${fps}`;
-        entry.qualityBadge.textContent = quality === 'auto' ? `auto \u2192 ${res}` : res;
-      } else {
-        entry.qualityBadge.textContent = quality || '\u2026';
-      }
-    } catch {
-      entry.qualityBadge.textContent = '\u2026';
-    }
+    entry.qualityBadge.textContent = entry.player.qualityLabel();
   }
 }
 
@@ -760,7 +613,7 @@ function updateQualityBadges() {
 const sidebarItems = new Map();
 
 function renderSidebar() {
-  // Sort: online (streaming) first, then active embeds, then rest — alpha within each
+  // Sort: online (streaming) first, then active players, then rest — alpha within each
   const sorted = [...state.channels].sort((a, b) => {
     const aOnline = onlineSet.has(a.name);
     const bOnline = onlineSet.has(b.name);
@@ -815,7 +668,7 @@ function createSidebarItem(name) {
   // Live toggle
   const toggle = document.createElement('label');
   toggle.className = 'live-toggle';
-  toggle.title = 'Toggle live embed';
+  toggle.title = 'Toggle player';
 
   const checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
@@ -879,7 +732,6 @@ function bindEvents() {
 
   // Sidebar toggle
   dom.sidebarToggle.addEventListener('click', toggleSidebar);
-  dom.startAll.addEventListener('click', startAll);
   dom.twitchLogin.addEventListener('click', () => {
     window.open('https://www.twitch.tv/login', '_blank');
   });

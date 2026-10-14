@@ -11,7 +11,7 @@ Designed for 1920x1080 OBS window capture in live productions.
 
 ## Download
 
-Grab the portable `.exe` from the [latest release](https://github.com/stefanpoensgen/stream-director/releases/latest). No installation required.
+Download `StreamDirector-<version>-win-x64.zip` from the [latest release](https://github.com/stefanpoensgen/stream-director/releases/latest), extract it anywhere and run `StreamDirector.exe`. No installation required.
 
 > **Windows SmartScreen:** Since the app is not code-signed, Windows Defender may show a warning on first launch. Click **"More info"** → **"Run anyway"** to proceed.
 
@@ -20,7 +20,6 @@ Grab the portable `.exe` from the [latest release](https://github.com/stefanpoen
 - **Add channels** via the sidebar input or the **Import** button (paste a list, one per line). Check the [Discussions](https://github.com/stefanpoensgen/stream-director/discussions) for ready-made channel lists for upcoming events
 - **Toggle** channels live with the switch in the sidebar
 - **Click** a channel name to focus it (large view + audio)
-- **Start All** activates all live channels at once
 
 ## Hotkeys
 
@@ -29,6 +28,8 @@ Grab the portable `.exe` from the [latest release](https://github.com/stefanpoen
 | `←` / `→` | Cycle focus through live channels |
 | `F`       | Recall last focused channel       |
 | `S`       | Toggle sidebar                    |
+| `C`       | Open chat of focused channel      |
+| `F11`     | Toggle fullscreen                 |
 | `Escape`  | Close import modal                |
 
 ## Window Controls
@@ -37,7 +38,8 @@ The app runs as a frameless window. Controls are in the bottom-left corner:
 
 - **Drag** the logo area to move the window
 - **Menu** toggles the sidebar
-- **Login** opens Twitch login — the session is shared with all embeds, so a Twitch Turbo subscription removes ads on all streams
+- **Login** opens Twitch login — the login is used for all streams, so a Twitch Turbo subscription removes ads everywhere
+- **Chat** opens the chat of the focused channel in a popup
 - **Close** (✕) closes the app
 
 ## Layout
@@ -46,10 +48,18 @@ L-shape grid optimized for 1920x1080:
 
 - **Left column** (240px): up to 7 tiles stacked vertically
 - **Focus area**: remaining width, top-right
-- **Bottom row** (135px): additional tiles
-- **Bottom-left cell**: branding, drag handle, menu/login/close buttons
+- **Bottom row**: additional tiles
+- **Bottom-left cell**: branding, drag handle, menu/chat/login/close buttons
 
-Focus switches only toggle CSS classes and mute/unmute — no iframe reload, no DOM re-parenting.
+## Playback
+
+Streams are played by a built-in HLS player ([hls.js](https://github.com/video-dev/hls.js)) instead of Twitch embeds — less than half the memory, no autoplay restrictions.
+
+- Tiles play **360p**, the focus plays **source** quality
+- Focus switches are seamless: the quality changes at the next 2-second segment boundary while playback continues — no gap in picture or sound
+- Players are never reloaded or re-parented on focus switches, only CSS classes, quality and mute change
+
+> Playback relies on Twitch's unofficial web API (the same one [streamlink](https://github.com/streamlink/streamlink) uses). It can break if Twitch changes it.
 
 ---
 
@@ -59,30 +69,47 @@ Focus switches only toggle CSS classes and mute/unmute — no iframe reload, no 
 # Install dependencies
 npm install
 
-# Development (hot reload + DevTools)
+# Development (reload on file changes + DevTools)
 npm run dev
 
-# Lint & format check
+# Format check
 npm run check
 
-# Build portable .exe
+# Build the Windows app folder → dist/StreamDirector/ (run on Windows)
 npm run build
 ```
 
 ### Architecture
 
 ```
-electron.js       Electron main process, local HTTP server
-index.html        App shell, Twitch embed API
-app.js            State management, player lifecycle, hotkeys
+main.js           Electron main process: window, Twitch login cookie, dev reload
+server.js         Local HTTP server: renderer files + Twitch proxy API
+twitch.js         Twitch API client (live status, HLS playlists)
+index.html        App shell
+app.js            State management, layout, player lifecycle, hotkeys
+player.js         HLS player per channel (tile/focus quality switching)
 styles.css        Dark theme, CSS Grid layout
+vendor/           Vendored hls.js (light build)
+scripts/build.js  Windows build (no electron-builder)
 ```
 
 State is persisted in `localStorage`. Max 14 simultaneous players with LRU eviction.
 
+### Dependencies
+
+Kept to a minimum: the only dev dependencies are `electron` and `prettier`, the app ships no npm packages at all. The build uses Electron's prebuilt binary directly and sets icon and file metadata with a checksum-pinned [rcedit](https://github.com/electron/rcedit). `hls.js` is vendored (`vendor/hls.light.mjs`, currently **1.6.15**) so it only changes when deliberately updated:
+
+```bash
+npm pack hls.js@<version>
+tar xzf hls.js-<version>.tgz
+cp package/dist/hls.light.mjs vendor/hls.light.mjs
+cp package/LICENSE vendor/hls.js.LICENSE
+sed -i '/^\/\/# sourceMappingURL=/d' vendor/hls.light.mjs
+```
+
 ### Release
 
-Tag a version to trigger a GitHub Action that builds the portable `.exe` and creates a release:
+Tag a version to trigger a GitHub Action that builds the app and attaches it as zip to a new release:
 
 ```bash
 git tag v1.0.0

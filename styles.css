@@ -411,26 +411,6 @@ ul {
   gap: 6px;
 }
 
-.start-all-btn {
-  width: 100%;
-  padding: 6px 0;
-  background: var(--accent);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: var(--radius);
-  transition: background var(--transition);
-}
-
-.start-all-btn:hover {
-  background: var(--accent-hover);
-}
-
-.start-all-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .import-btn {
   width: 100%;
   padding: 6px 0;
@@ -596,15 +576,12 @@ ul {
     box-shadow var(--transition);
 }
 
-.player-slot .player-target {
+.player-slot video {
+  display: block;
   width: 100%;
   height: 100%;
-}
-
-.player-slot .player-target iframe {
-  width: 100% !important;
-  height: 100% !important;
-  border: none;
+  object-fit: contain;
+  background: #000;
 }
 
 /* ─── Tile Slot ──────────────────────────────────────────────────── */
@@ -616,11 +593,6 @@ ul {
 .player-slot.is-tile:hover {
   border-color: var(--accent);
   box-shadow: 0 0 12px var(--accent-dim);
-}
-
-/* Block iframe interaction on tiles so clicks reach the container */
-.player-slot.is-tile .player-target {
-  pointer-events: none;
 }
 
 /* ─── Player Label Badge ─────────────────────────────────────────── */

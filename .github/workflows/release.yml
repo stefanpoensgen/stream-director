@@ -23,11 +23,13 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run lint
-
-      - run: npm run format:check
+      - run: npm run check
 
       - run: npm run build
+
+      - name: Zip app folder
+        shell: pwsh
+        run: Compress-Archive -Path dist/StreamDirector -DestinationPath "dist/StreamDirector-${{ github.ref_name }}-win-x64.zip"
 
       - name: Generate release notes
         id: notes
@@ -45,5 +47,5 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          files: dist/*.zip
           body: ${{ steps.notes.outputs.body }}
