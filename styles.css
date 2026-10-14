@@ -389,11 +389,6 @@ ul {
   color: var(--text-dim);
 }
 
-/* Keep the LIVE badge in the column of the other rows (volume slider 56px + delete 20px + gaps) */
-.channel-item.is-followed .live-badge {
-  margin-right: 92px;
-}
-
 .channel-item.is-followed .channel-name:hover {
   color: var(--accent-text);
 }
