@@ -476,6 +476,50 @@ ul {
   background: var(--surface-hover);
 }
 
+/* ─── Channel tooltip ───────────────────────────────────────────── */
+.channel-tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: 280px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.35;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.channel-tooltip.hidden {
+  display: none;
+}
+
+.channel-tooltip-heading {
+  font-weight: 600;
+  color: var(--twitch);
+}
+
+.channel-tooltip-title {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+}
+
+.channel-tooltip-status {
+  margin-top: 4px;
+  color: var(--text-dim);
+}
+
+.channel-tooltip-status::before {
+  content: '\25CF';
+  margin-right: 4px;
+  color: var(--red);
+}
+
 /* ─── Import Modal ──────────────────────────────────────────────── */
 .import-overlay {
   position: fixed;

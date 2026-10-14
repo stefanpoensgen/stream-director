@@ -85,9 +85,9 @@ internal sealed class AppRequestHandler(
             .ToList();
         if (!channels.All(TwitchClient.IsValidChannelName)) return Text(400, "Invalid channel name");
 
-        var liveChannels = await twitch.FetchLiveChannelsAsync(channels);
+        var liveStreams = await twitch.FetchLiveStreamsAsync(channels);
 
-        return Response(200, _json.Serialize(liveChannels), JsonContentType);
+        return Response(200, _json.Serialize(liveStreams), JsonContentType);
     }
 
     private async Task<CoreWebView2WebResourceResponse> PlaylistAsync(string channel, bool lowLatency)

@@ -72,7 +72,7 @@ internal sealed class FollowsConnection
         if (File.Exists(StorePath)) File.Delete(StorePath);
     }
 
-    /// <summary>All followed channels: login, live and — when live — game and viewers.</summary>
+    /// <summary>All followed channels: login, live and — when live — displayName, title, game (the category) and viewers.</summary>
     public async Task<List<object>> FetchFollowedAsync()
     {
         var live = (await GetPagesAsync(FollowedStreamsUrl, maxPages: 1))
@@ -94,10 +94,12 @@ internal sealed class FollowsConnection
                 {
                     login,
                     live = true,
+                    displayName = stream["user_name"] as string,
+                    title = stream["title"] as string,
                     game = stream["game_name"] as string,
                     viewers = stream["viewer_count"] as int? ?? 0,
                 }
-                : new { login, live = false, game = (string?)null, viewers = 0 })
+                : new { login, live = false })
             .ToList();
     }
 

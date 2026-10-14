@@ -36,6 +36,9 @@ internal sealed class TwitchClient
         }
         """;
 
+    private const string LiveStreamFields =
+        "displayName broadcastSettings { title } stream { viewersCount game { displayName } }";
+
     private static readonly Regex ChannelNamePattern = new("^[a-z0-9_]{1,25}$");
 
     private readonly HttpClient _http = new();
@@ -44,21 +47,37 @@ internal sealed class TwitchClient
 
     public static bool IsValidChannelName(string name) => ChannelNamePattern.IsMatch(name);
 
-    /// <summary>Returns the subset of <paramref name="names"/> that is currently streaming.</summary>
-    public async Task<List<string>> FetchLiveChannelsAsync(IReadOnlyList<string> names)
+    /// <summary>
+    /// The channels of <paramref name="names"/> that are currently streaming, with what they stream:
+    /// login, displayName, title, game (the category) and viewers.
+    /// </summary>
+    public async Task<List<object>> FetchLiveStreamsAsync(IReadOnlyList<string> names)
     {
-        var liveNames = new List<string>();
+        var liveStreams = new List<object>();
 
         for (var start = 0; start < names.Count; start += LiveCheckBatchSize)
         {
             var batch = names.Skip(start).Take(LiveCheckBatchSize).ToList();
-            var aliases = batch.Select((name, index) => $"u{index}: user(login: \"{name}\") {{ stream {{ id }} }}");
+            var aliases = batch.Select((name, index) =>
+                $"u{index}: user(login: \"{name}\") {{ {LiveStreamFields} }}");
             var data = await GqlAsync(new { query = $"query {{ {string.Join(" ", aliases)} }}" });
 
-            liveNames.AddRange(batch.Where((_, index) => data[$"u{index}"] is IDictionary user && user["stream"] is not null));
+            for (var index = 0; index < batch.Count; index++)
+            {
+                if (data[$"u{index}"] is not IDictionary user || user["stream"] is not IDictionary stream) continue;
+
+                liveStreams.Add(new
+                {
+                    login = batch[index],
+                    displayName = user["displayName"] as string,
+                    title = (user["broadcastSettings"] as IDictionary)?["title"] as string,
+                    game = (stream["game"] as IDictionary)?["displayName"] as string,
+                    viewers = stream["viewersCount"] as int? ?? 0,
+                });
+            }
         }
 
-        return liveNames;
+        return liveStreams;
     }
 
     /// <summary>

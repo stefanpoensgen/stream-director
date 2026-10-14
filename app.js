@@ -47,6 +47,9 @@ const players = new Map();
 // Tracks which channels are actually streaming
 const onlineSet = new Set();
 
+// Channel name → { displayName, title, game, viewers } of streaming own channels (from the live check)
+const liveStreams = new Map();
+
 // ─── DOM Cache ──────────────────────────────────────────────────────
 const dom = {};
 
@@ -55,6 +58,7 @@ function cacheDom() {
   dom.content = document.getElementById('content');
   dom.focusEmpty = document.getElementById('focus-empty');
   dom.channelList = document.getElementById('channel-list');
+  dom.channelTooltip = document.getElementById('channel-tooltip');
   dom.lowLatency = document.getElementById('low-latency');
   dom.sidebarToggle = document.getElementById('sidebar-toggle');
   dom.addChannelForm = document.getElementById('add-channel-form');
@@ -100,18 +104,25 @@ function init() {
   }
 }
 
-/** Ask the main process which of `names` are streaming. Returns null on failure. */
-async function fetchLiveChannels(names) {
-  if (names.length === 0) return new Set();
+/** Ask the host which of `names` are streaming: Map name → stream details. Returns null on failure. */
+async function fetchLiveStreams(names) {
+  if (names.length === 0) return new Map();
 
   try {
     const response = await fetch(`/api/live?channels=${names.join(',')}`);
     if (!response.ok) return null;
 
-    return new Set(await response.json());
+    const streams = await response.json();
+
+    return new Map(streams.map((stream) => [stream.login, stream]));
   } catch {
     return null;
   }
+}
+
+function markOnline(name, stream) {
+  onlineSet.add(name);
+  liveStreams.set(name, stream);
 }
 
 let liveCheckRunning = false;
@@ -122,12 +133,13 @@ async function checkAllLive() {
   liveCheckRunning = true;
 
   try {
-    const liveNames = await fetchLiveChannels(state.channels.map((channel) => channel.name));
-    if (!liveNames) return;
+    const streams = await fetchLiveStreams(state.channels.map((channel) => channel.name));
+    if (!streams) return;
 
     onlineSet.clear();
-    for (const name of liveNames) {
-      onlineSet.add(name);
+    liveStreams.clear();
+    for (const [name, stream] of streams) {
+      markOnline(name, stream);
     }
     renderSidebar();
   } finally {
@@ -332,8 +344,9 @@ function addChannel(name) {
   if (state.channels.some((c) => c.name === normalized)) return false;
 
   state.channels.push({ name: normalized });
-  fetchLiveChannels([normalized]).then((liveNames) => {
-    if (liveNames?.has(normalized)) onlineSet.add(normalized);
+  fetchLiveStreams([normalized]).then((streams) => {
+    const stream = streams?.get(normalized);
+    if (stream) markOnline(normalized, stream);
     renderSidebar();
   });
   renderSidebar();
@@ -405,7 +418,7 @@ async function refreshLoginState() {
 const CONNECT_POLL_INTERVAL_MS = 3000;
 const CONNECT_POLL_DURATION_MS = 5 * 60_000;
 
-/** All followed channels: { login, live, game, viewers }. Not persisted. */
+/** All followed channels: { login, live } plus, when live, { displayName, title, game, viewers }. Not persisted. */
 let followedChannels = [];
 let followedConnected = false;
 /** Code to confirm on Twitch while connecting, else null. */
@@ -483,12 +496,13 @@ function addFollowed(login, { focus }) {
 }
 
 /** Followed channel that is not in the own list yet: same row, marked with ♥. */
-function createFollowedRow({ login, live, game, viewers }) {
+function createFollowedRow({ login, live }) {
   const li = document.createElement('li');
   li.className = 'channel-item is-followed';
-  li.title = live
-    ? ['Followed on Twitch', game, `${formatViewers(viewers)} viewers`].filter(Boolean).join(' · ')
-    : 'Followed on Twitch';
+  li.dataset.channel = login;
+
+  // Live rows get the channel tooltip instead
+  if (!live) li.title = 'Followed on Twitch';
 
   const toggle = document.createElement('label');
   toggle.className = 'live-toggle';
@@ -1047,6 +1061,7 @@ function createPlayerSlot(name) {
       badge.textContent = 'OFFLINE';
       badge.classList.remove('hidden');
       onlineSet.delete(name);
+      liveStreams.delete(name);
       renderSidebar();
     },
     onUnavailable() {
@@ -1152,11 +1167,15 @@ function renderSidebar() {
     followedRows.push(statusRow);
     dom.channelList.appendChild(statusRow);
   }
+
+  // Rows were moved or rebuilt — the tooltip would point at the wrong one
+  hideChannelTooltip();
 }
 
 function createSidebarItem(name) {
   const li = document.createElement('li');
   li.className = 'channel-item';
+  li.dataset.channel = name;
 
   // Live toggle
   const toggle = document.createElement('label');
@@ -1178,7 +1197,6 @@ function createSidebarItem(name) {
   const nameBtn = document.createElement('button');
   nameBtn.className = 'channel-name';
   nameBtn.textContent = name;
-  nameBtn.title = 'Click to focus';
   nameBtn.addEventListener('click', () => setFocus(name));
 
   // Live badge
@@ -1206,6 +1224,58 @@ function createSidebarItem(name) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Channel tooltip — what a live channel streams, like Twitch's sidebar
+// ═══════════════════════════════════════════════════════════════════
+
+const TOOLTIP_GAP_PX = 8;
+
+function findLiveStream(name) {
+  return (
+    liveStreams.get(name) ??
+    followedChannels.find((channel) => channel.login === name && channel.live) ??
+    null
+  );
+}
+
+function createTooltipLine(className, text) {
+  const line = document.createElement('div');
+  line.className = className;
+  line.textContent = text;
+
+  return line;
+}
+
+/** "Name · Category", the stream title and "● Live | 513 viewers" next to the hovered row. */
+function showChannelTooltip(row) {
+  const stream = findLiveStream(row.dataset.channel);
+  if (!stream) {
+    hideChannelTooltip();
+    return;
+  }
+
+  const heading = [stream.displayName || stream.login, stream.game].filter(Boolean).join(' · ');
+  const lines = [createTooltipLine('channel-tooltip-heading', heading)];
+  if (stream.title) lines.push(createTooltipLine('channel-tooltip-title', stream.title));
+  lines.push(
+    createTooltipLine('channel-tooltip-status', `Live | ${formatViewers(stream.viewers)} viewers`),
+  );
+
+  const tooltip = dom.channelTooltip;
+  tooltip.replaceChildren(...lines);
+  tooltip.classList.remove('hidden');
+
+  // Beside the row, kept inside the window
+  const rowBounds = row.getBoundingClientRect();
+  const maxTop = innerHeight - tooltip.offsetHeight - TOOLTIP_GAP_PX;
+  tooltip.style.left = `${rowBounds.right + TOOLTIP_GAP_PX}px`;
+  tooltip.style.top = `${Math.max(TOOLTIP_GAP_PX, Math.min(rowBounds.top, maxTop))}px`;
+}
+
+function hideChannelTooltip() {
+  dom.channelTooltip.classList.add('hidden');
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // Event Binding
 // ═══════════════════════════════════════════════════════════════════
 
@@ -1222,6 +1292,13 @@ function bindEvents() {
       setTimeout(() => input.classList.remove('input-error'), 400);
     }
   });
+
+  dom.channelList.addEventListener('mouseover', (event) => {
+    const row = event.target.closest('[data-channel]');
+    if (row) showChannelTooltip(row);
+    else hideChannelTooltip();
+  });
+  dom.channelList.addEventListener('mouseleave', hideChannelTooltip);
 
   // Sidebar toggle
   dom.sidebarToggle.addEventListener('click', toggleSidebar);
