@@ -13,6 +13,8 @@ const QUALITY_BADGE_INTERVAL_MS = 2000;
 const DEFAULT_VOLUME = 1;
 const VOLUME_STEP_PERCENT = 5;
 const VOLUME_OSD_DURATION_MS = 1200;
+const SPEAKER_ICON = '\u{1F50A}';
+const MUTED_ICON = '\u{1F507}';
 const TWITCH_LOGIN_URL = 'https://www.twitch.tv/login';
 // Same rule as the host — one invalid name would make it reject every live check
 const CHANNEL_NAME_PATTERN = /^[a-z0-9_]{1,25}$/;
@@ -168,6 +170,7 @@ function restoreChannels(saved) {
     seen.add(name);
     const channel = { name };
     if (Number.isFinite(entry.volume)) channel.volume = Math.min(1, Math.max(0, entry.volume));
+    if (entry.muted === true) channel.muted = true;
     channels.push(channel);
   }
 
@@ -607,6 +610,15 @@ function getChannelVolume(name) {
   return state.channels.find((c) => c.name === name)?.volume ?? DEFAULT_VOLUME;
 }
 
+function isChannelMuted(name) {
+  return state.channels.find((c) => c.name === name)?.muted === true;
+}
+
+/** What the player plays: the set volume, or silence while muted (the volume is kept for unmuting). */
+function getAudibleVolume(name) {
+  return isChannelMuted(name) ? 0 : getChannelVolume(name);
+}
+
 function setChannelVolume(name, volume) {
   const channel = state.channels.find((c) => c.name === name);
   if (!channel) return;
@@ -614,14 +626,36 @@ function setChannelVolume(name, volume) {
   // Snap to whole-percent steps — no float drift from repeated ↑/↓
   const percent = Math.round((volume * 100) / VOLUME_STEP_PERCENT) * VOLUME_STEP_PERCENT;
   channel.volume = Math.min(100, Math.max(0, percent)) / 100;
+  channel.muted = false; // changing the volume unmutes, as in Windows or YouTube
 
-  const entry = players.get(name);
-  entry?.player.setVolume(channel.volume);
-  if (entry && name === state.focus) showVolumeOsd(entry, channel.volume);
+  applyChannelAudio(name);
 
   // Only the controls — a full renderSidebar() re-appends rows and breaks an ongoing drag
   syncVolumeControls(name);
   saveState();
+}
+
+function toggleMute(name) {
+  const channel = state.channels.find((c) => c.name === name);
+  if (!channel) return;
+
+  channel.muted = !channel.muted;
+  applyChannelAudio(name);
+  syncVolumeControls(name);
+  saveState();
+}
+
+function toggleFocusMute() {
+  if (state.focus) toggleMute(state.focus);
+}
+
+/** Hands the audible volume to the player and shows it briefly on the focus. */
+function applyChannelAudio(name) {
+  const entry = players.get(name);
+  if (!entry) return;
+
+  entry.player.setVolume(getAudibleVolume(name));
+  if (name === state.focus) showVolumeOsd(entry, formatVolume(name));
 }
 
 /** Adjust the focused channel's volume (direction: +1 or -1). */
@@ -652,32 +686,38 @@ function createVolumeSlider(name, className) {
 
 /** Update every control showing a channel's volume (sidebar slider, focus overlay). */
 function syncVolumeControls(name) {
-  const volume = getChannelVolume(name);
-  const percent = String(Math.round(volume * 100));
-  const label = formatVolume(volume);
+  const percent = String(Math.round(getChannelVolume(name) * 100));
+  const muted = isChannelMuted(name);
+  const label = formatVolume(name);
 
   const sidebarSlider = sidebarItems.get(name)?._volumeSlider;
   if (sidebarSlider) {
     sidebarSlider.value = percent;
     sidebarSlider.title = `Volume ${label}`;
+    sidebarSlider.classList.toggle('is-muted', muted);
   }
 
   const overlay = players.get(name)?.volumeControl;
   if (overlay) {
     overlay.slider.value = percent;
+    overlay.slider.classList.toggle('is-muted', muted);
     overlay.label.textContent = label;
+    overlay.muteButton.textContent = muted ? MUTED_ICON : SPEAKER_ICON;
+    overlay.muteButton.title = muted ? 'Unmute (M)' : 'Mute (M)';
   }
 }
 
-function formatVolume(volume) {
-  const percent = Math.round(volume * 100);
+function formatVolume(name) {
+  if (isChannelMuted(name)) return `${MUTED_ICON} muted`;
 
-  return `${percent === 0 ? '\u{1F507}' : '\u{1F50A}'} ${percent} %`;
+  const percent = Math.round(getChannelVolume(name) * 100);
+
+  return `${percent === 0 ? MUTED_ICON : SPEAKER_ICON} ${percent} %`;
 }
 
-function showVolumeOsd(entry, volume) {
+function showVolumeOsd(entry, text) {
   const osd = entry.volumeOsd;
-  osd.textContent = formatVolume(volume);
+  osd.textContent = text;
   osd.classList.add('is-visible');
 
   clearTimeout(osd._hideTimer);
@@ -910,12 +950,15 @@ function createPlayerSlot(name) {
   // Volume overlay, visible while hovering the focus
   const volumeControl = {
     element: document.createElement('div'),
+    muteButton: document.createElement('button'),
     slider: createVolumeSlider(name, 'volume-control-slider'),
     label: document.createElement('span'),
   };
   volumeControl.element.className = 'volume-control';
+  volumeControl.muteButton.className = 'volume-control-mute';
+  volumeControl.muteButton.addEventListener('click', () => toggleMute(name));
   volumeControl.label.className = 'volume-control-label';
-  volumeControl.element.append(volumeControl.slider, volumeControl.label);
+  volumeControl.element.append(volumeControl.muteButton, volumeControl.slider, volumeControl.label);
   container.appendChild(volumeControl.element);
 
   // Quality debug badge (dev mode only)
@@ -950,7 +993,7 @@ function createPlayerSlot(name) {
     },
   });
 
-  player.setVolume(getChannelVolume(name));
+  player.setVolume(getAudibleVolume(name));
 
   players.set(name, { container, player, volumeOsd, volumeControl, qualityBadge });
   syncVolumeControls(name);
@@ -1174,6 +1217,11 @@ function handleHotkey(e) {
     case 'C':
       e.preventDefault();
       openChat();
+      break;
+    case 'm':
+    case 'M':
+      e.preventDefault();
+      toggleFocusMute();
       break;
   }
 }

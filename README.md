@@ -56,6 +56,7 @@ Tips for a clean picture:
 | --------- | ----------------------------------------- |
 | `←` / `→` | Switch focus to the previous/next channel |
 | `↑` / `↓` | Volume of the focus ±5 %                  |
+| `M`       | Mute/unmute the focus                     |
 | `F`       | Back to the previously focused channel    |
 | `S`       | Show/hide the sidebar                     |
 | `C`       | Open the chat of the focus                |
@@ -66,7 +67,7 @@ Buttons in the bottom-left corner: **Menu** (sidebar), **Chat** (chat of the foc
 
 **Low latency** (switch at the bottom of the sidebar) uses Twitch's low-latency segments like the Twitch website: about 3–4 s less delay, but less buffer — turn it off if streams stutter on your connection.
 
-**Volume** is set per channel and remembered: hover the focus for its slider, use the slider in the sidebar, or press `↑`/`↓`.
+**Volume** is set per channel and remembered: hover the focus for its slider and mute button, use the slider in the sidebar, or press `↑`/`↓` and `M`. Muting keeps the volume; changing the volume unmutes.
 
 ## Layout
 

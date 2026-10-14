@@ -680,6 +680,18 @@ ul {
   pointer-events: auto;
 }
 
+.volume-control-mute {
+  width: 24px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.volume-control-slider.is-muted,
+.channel-volume.is-muted {
+  opacity: 0.4;
+}
+
 .volume-control-slider {
   width: 140px;
   accent-color: var(--accent-text);
