@@ -282,6 +282,8 @@ function toggleLive(name) {
     }
   } else {
     addLive(name);
+    // Nothing in focus yet (e.g. the first channel) — the activated channel takes it
+    if (!state.focus) state.focus = name;
   }
   syncPlayers();
   renderSidebar();
