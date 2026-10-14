@@ -25,11 +25,22 @@ jobs:
 
       - run: npm run check
 
-      - run: npm run build
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # The version comes from the tag (v1.2.3 → 1.2.3), no version bump commits needed
+      - name: Build
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: dotnet build host -c Release "-p:Version=$($env:TAG.TrimStart('v'))" -o dist/StreamDirector
 
       - name: Zip app folder
         shell: pwsh
-        run: Compress-Archive -Path dist/StreamDirector -DestinationPath "dist/StreamDirector-${{ github.ref_name }}-win-x64.zip"
+        env:
+          TAG: ${{ github.ref_name }}
+        run: Compress-Archive -Path dist/StreamDirector -DestinationPath "dist/StreamDirector-$env:TAG-win.zip"
 
       - name: Generate release notes
         id: notes
