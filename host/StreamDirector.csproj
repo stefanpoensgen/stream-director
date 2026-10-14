@@ -12,7 +12,7 @@
     <RootNamespace>StreamDirector</RootNamespace>
     <Product>StreamDirector</Product>
     <Company>StreamDirector</Company>
-    <Version>0.0.6</Version>
+    <Version>0.1.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationIcon>..\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
