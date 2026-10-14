@@ -2,3 +2,5 @@
 /dist/
 /.claude/
 /.idea/
+/host/bin/
+/host/obj/

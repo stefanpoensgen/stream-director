@@ -1,0 +1,122 @@
+// Twitch API client — unofficial GQL + usher endpoints, the same ones streamlink uses.
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Web.Script.Serialization;
+
+namespace StreamDirector;
+
+internal sealed class TwitchClient
+{
+    private const string GqlUrl = "https://gql.twitch.tv/gql";
+    private const string ClientId = "kimne78kx3ncx6brgo4mv6wki5h1ko";
+    private const string UsherUrl = "https://usher.ttvnw.net/api/channel/hls";
+    private const int LiveCheckBatchSize = 35;
+
+    private const string PlaybackTokenQuery = """
+        query PlaybackAccessToken($login: String!) {
+          streamPlaybackAccessToken(
+            channelName: $login
+            params: { platform: "web", playerBackend: "mediaplayer", playerType: "embed" }
+          ) { value signature }
+        }
+        """;
+
+    private static readonly Regex ChannelNamePattern = new("^[a-z0-9_]{1,25}$");
+    private static readonly HashSet<HttpStatusCode> OfflineStatusCodes = [HttpStatusCode.Forbidden, HttpStatusCode.NotFound];
+
+    private readonly HttpClient _http = new();
+    private readonly JavaScriptSerializer _json = new();
+    private readonly Random _random = new();
+
+    public static bool IsValidChannelName(string name) => ChannelNamePattern.IsMatch(name);
+
+    /// <summary>Returns the subset of <paramref name="names"/> that is currently streaming.</summary>
+    public async Task<List<string>> FetchLiveChannelsAsync(IReadOnlyList<string> names)
+    {
+        var liveNames = new List<string>();
+
+        for (var start = 0; start < names.Count; start += LiveCheckBatchSize)
+        {
+            var batch = names.Skip(start).Take(LiveCheckBatchSize).ToList();
+            var aliases = batch.Select((name, index) => $"u{index}: user(login: \"{name}\") {{ stream {{ id }} }}");
+            var data = await GqlAsync(new { query = $"query {{ {string.Join(" ", aliases)} }}" });
+
+            liveNames.AddRange(batch.Where((_, index) => data[$"u{index}"] is IDictionary user && user["stream"] is not null));
+        }
+
+        return liveNames;
+    }
+
+    /// <summary>
+    /// Fetches the HLS master playlist of a channel, or null when it is offline.
+    /// With the auth token of a Twitch Turbo account the stream comes without ads.
+    /// </summary>
+    public async Task<string?> FetchMasterPlaylistAsync(string channel, string? authToken)
+    {
+        var token = await FetchPlaybackTokenAsync(channel, authToken);
+        if (token is null) return null;
+
+        var query = new Dictionary<string, string>
+        {
+            ["sig"] = (string)token["signature"],
+            ["token"] = (string)token["value"],
+            ["allow_source"] = "true",
+            ["player_backend"] = "mediaplayer",
+            ["playlist_include_framerate"] = "true",
+            ["supported_codecs"] = "avc1",
+            ["p"] = _random.Next(1_000_000).ToString(),
+        };
+        var queryString = string.Join("&", query.Select(pair => $"{pair.Key}={Uri.EscapeDataString(pair.Value)}"));
+
+        using var response = await _http.GetAsync($"{UsherUrl}/{channel}.m3u8?{queryString}");
+        if (OfflineStatusCodes.Contains(response.StatusCode)) return null;
+        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"Twitch usher responded {(int)response.StatusCode}");
+
+        return await response.Content.ReadAsStringAsync();
+    }
+
+    private async Task<IDictionary?> FetchPlaybackTokenAsync(string channel, string? authToken)
+    {
+        var body = new { query = PlaybackTokenQuery, variables = new { login = channel } };
+
+        try
+        {
+            return (await GqlAsync(body, authToken))["streamPlaybackAccessToken"] as IDictionary;
+        }
+        catch (HttpRequestException) when (authToken is not null)
+        {
+            // An expired login must not break playback — fall back to anonymous (with ads)
+            return (await GqlAsync(body))["streamPlaybackAccessToken"] as IDictionary;
+        }
+    }
+
+    private async Task<IDictionary> GqlAsync(object body, string? authToken = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, GqlUrl)
+        {
+            Content = new StringContent(_json.Serialize(body), Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add("Client-ID", ClientId);
+        if (authToken is not null) request.Headers.TryAddWithoutValidation("Authorization", $"OAuth {authToken}");
+
+        using var response = await _http.SendAsync(request);
+        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"Twitch GQL responded {(int)response.StatusCode}");
+
+        var result = _json.Deserialize<Dictionary<string, object>>(await response.Content.ReadAsStringAsync());
+        if (result.TryGetValue("errors", out var errors) && errors is ICollection { Count: > 0 } errorList)
+        {
+            var firstError = errorList.Cast<object>().First() as IDictionary;
+            throw new HttpRequestException($"Twitch GQL error: {firstError?["message"]}");
+        }
+
+        return (IDictionary)result["data"];
+    }
+}
