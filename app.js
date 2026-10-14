@@ -46,7 +46,7 @@ const players = new Map();
 // Tracks which channels are actually streaming
 const onlineSet = new Set();
 
-// Channel name → { displayName, title, game, viewers } of streaming own channels (from the live check)
+// Channel name → { displayName, title, game, viewers, liveWith } of streaming own channels (from the live check)
 const liveStreams = new Map();
 
 // ─── DOM Cache ──────────────────────────────────────────────────────
@@ -414,7 +414,7 @@ async function refreshLoginState() {
 const CONNECT_POLL_INTERVAL_MS = 3000;
 const CONNECT_POLL_DURATION_MS = 5 * 60_000;
 
-/** All followed channels: { login, live } plus, when live, { displayName, title, game, viewers }. Not persisted. */
+/** All followed channels: { login, live } plus, when live, { displayName, title, game, viewers, liveWith }. Not persisted. */
 let followedChannels = [];
 let followedConnected = false;
 /** Code to confirm on Twitch while connecting, else null. */
@@ -1221,7 +1221,20 @@ function createTooltipLine(className, text) {
   return line;
 }
 
-/** "Name · Category", the stream title and "● Live | 513 viewers" next to the hovered row. */
+/** Stream Together partner: name, and viewers when the partner streams too. */
+function createLiveWithLine({ displayName, viewers }) {
+  const line = createTooltipLine('channel-tooltip-partner', displayName);
+  if (viewers != null) {
+    line.append(createTooltipLine('channel-tooltip-partner-viewers', formatViewers(viewers)));
+  }
+
+  return line;
+}
+
+/**
+ * "Name · Category", the stream title, "● Live | 513 viewers" and the
+ * Stream Together partners ("Live with") next to the hovered row.
+ */
 function showChannelTooltip(row) {
   const stream = findLiveStream(row.dataset.channel);
   if (!stream) {
@@ -1235,6 +1248,10 @@ function showChannelTooltip(row) {
   lines.push(
     createTooltipLine('channel-tooltip-status', `Live | ${formatViewers(stream.viewers)} viewers`),
   );
+  if (stream.liveWith) {
+    lines.push(createTooltipLine('channel-tooltip-section', 'Live with:'));
+    lines.push(...stream.liveWith.map(createLiveWithLine));
+  }
 
   const tooltip = dom.channelTooltip;
   tooltip.replaceChildren(...lines);

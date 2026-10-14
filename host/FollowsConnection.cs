@@ -40,6 +40,7 @@ internal sealed class FollowsConnection
     private static readonly string StorePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StreamDirector", "follows.dat");
 
+    private readonly TwitchClient _twitch;
     private readonly HttpClient _http = new();
     private readonly JavaScriptSerializer _json = new();
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -47,6 +48,11 @@ internal sealed class FollowsConnection
     private List<string>? _followedLogins;
     private DateTime _followedLoginsFetchedAt;
     private CancellationTokenSource? _pendingConnect;
+
+    public FollowsConnection(TwitchClient twitch)
+    {
+        _twitch = twitch;
+    }
 
     public bool IsConnected => _tokens is not null;
 
@@ -72,7 +78,7 @@ internal sealed class FollowsConnection
         if (File.Exists(StorePath)) File.Delete(StorePath);
     }
 
-    /// <summary>All followed channels: login, live and — when live — displayName, title, game (the category) and viewers.</summary>
+    /// <summary>All followed channels: login, live and — when live — displayName, title, game (the category), viewers and liveWith.</summary>
     public async Task<List<object>> FetchFollowedAsync()
     {
         var live = (await GetPagesAsync(FollowedStreamsUrl, maxPages: 1))
@@ -86,6 +92,8 @@ internal sealed class FollowsConnection
             _followedLoginsFetchedAt = DateTime.UtcNow;
         }
 
+        var liveWith = await _twitch.FetchLiveWithAsync(live.Values.Select(stream => (string)stream["user_id"]).ToList());
+
         // A channel followed after the last list refresh can already be live — include it anyway
         return _followedLogins
             .Union(live.Keys)
@@ -98,6 +106,7 @@ internal sealed class FollowsConnection
                     title = stream["title"] as string,
                     game = stream["game_name"] as string,
                     viewers = stream["viewer_count"] as int? ?? 0,
+                    liveWith = liveWith.TryGetValue((string)stream["user_id"], out var partners) ? partners : null,
                 }
                 : new { login, live = false })
             .ToList();

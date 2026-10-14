@@ -32,7 +32,8 @@ internal sealed class MainForm : Form
     private readonly bool _isDev;
     private CoreWebView2Environment? _environment;
     private AuthWindow? _authWindow;
-    private readonly FollowsConnection _follows = new();
+    private readonly TwitchClient _twitch = new();
+    private readonly FollowsConnection _follows;
     private readonly AudioRenderer _audioRenderer = new();
     private bool _isFullscreen;
     private FormWindowState _windowStateBeforeFullscreen;
@@ -42,6 +43,7 @@ internal sealed class MainForm : Form
     public MainForm(bool isDev)
     {
         _isDev = isDev;
+        _follows = new FollowsConnection(_twitch);
 
         Text = "StreamDirector";
         Icon = NativeMethods.LoadApplicationIcon();
@@ -106,7 +108,7 @@ internal sealed class MainForm : Form
         };
 
         _session = new TwitchSession(core.CookieManager);
-        var requestHandler = new AppRequestHandler(environment, new TwitchClient(), _session, _follows);
+        var requestHandler = new AppRequestHandler(environment, _twitch, _session, _follows);
         core.AddWebResourceRequestedFilter($"{AppRequestHandler.Origin}/*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += requestHandler.OnWebResourceRequested;
 

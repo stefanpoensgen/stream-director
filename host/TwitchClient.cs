@@ -3,6 +3,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -37,7 +38,10 @@ internal sealed class TwitchClient
         """;
 
     private const string LiveStreamFields =
-        "displayName broadcastSettings { title } stream { viewersCount game { displayName } }";
+        "id displayName broadcastSettings { title } stream { viewersCount game { displayName } }";
+
+    private const string LiveWithFields =
+        "id session { guests { user { id displayName stream { viewersCount } } } }";
 
     private static readonly Regex ChannelNamePattern = new("^[a-z0-9_]{1,25}$");
 
@@ -49,11 +53,11 @@ internal sealed class TwitchClient
 
     /// <summary>
     /// The channels of <paramref name="names"/> that are currently streaming, with what they stream:
-    /// login, displayName, title, game (the category) and viewers.
+    /// login, displayName, title, game (the category), viewers and liveWith (see <see cref="FetchLiveWithAsync"/>).
     /// </summary>
     public async Task<List<object>> FetchLiveStreamsAsync(IReadOnlyList<string> names)
     {
-        var liveStreams = new List<object>();
+        var liveUsers = new List<(string Login, IDictionary User, IDictionary Stream)>();
 
         for (var start = 0; start < names.Count; start += LiveCheckBatchSize)
         {
@@ -64,20 +68,68 @@ internal sealed class TwitchClient
 
             for (var index = 0; index < batch.Count; index++)
             {
-                if (data[$"u{index}"] is not IDictionary user || user["stream"] is not IDictionary stream) continue;
-
-                liveStreams.Add(new
+                if (data[$"u{index}"] is IDictionary user && user["stream"] is IDictionary stream)
                 {
-                    login = batch[index],
-                    displayName = user["displayName"] as string,
-                    title = (user["broadcastSettings"] as IDictionary)?["title"] as string,
-                    game = (stream["game"] as IDictionary)?["displayName"] as string,
-                    viewers = stream["viewersCount"] as int? ?? 0,
-                });
+                    liveUsers.Add((batch[index], user, stream));
+                }
             }
         }
 
-        return liveStreams;
+        var liveWith = await FetchLiveWithAsync(liveUsers.Select(live => (string)live.User["id"]).ToList());
+
+        return liveUsers
+            .Select(live => (object)new
+            {
+                login = live.Login,
+                displayName = live.User["displayName"] as string,
+                title = (live.User["broadcastSettings"] as IDictionary)?["title"] as string,
+                game = (live.Stream["game"] as IDictionary)?["displayName"] as string,
+                viewers = live.Stream["viewersCount"] as int? ?? 0,
+                liveWith = liveWith.TryGetValue((string)live.User["id"], out var partners) ? partners : null,
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Twitch "Stream Together" sessions of the given channels (by user ID): channel ID → the other
+    /// participants (displayName, viewers when they stream themselves), most viewers first.
+    /// Optional extra — on failure the channels are reported without partners.
+    /// </summary>
+    public async Task<Dictionary<string, List<object>>> FetchLiveWithAsync(IReadOnlyList<string> channelIds)
+    {
+        var liveWith = new Dictionary<string, List<object>>();
+        if (channelIds.Count == 0) return liveWith;
+
+        try
+        {
+            var ids = string.Join(", ", channelIds.Select(id => $"\"{id}\""));
+            var data = await GqlAsync(new { query = $"query {{ guestStarChannelCollaboration(options: {{ channelIDs: [{ids}] }}) {{ {LiveWithFields} }} }}" });
+
+            foreach (var collaboration in (data["guestStarChannelCollaboration"] as ICollection ?? Array.Empty<object>()).Cast<IDictionary>())
+            {
+                if ((collaboration["session"] as IDictionary)?["guests"] is not ICollection guests) continue;
+
+                var channelId = (string)collaboration["id"];
+                var partners = guests.Cast<IDictionary>()
+                    .Select(guest => guest["user"] as IDictionary)
+                    .Where(user => user is not null && (string)user["id"] != channelId)
+                    .Select(user => new
+                    {
+                        displayName = (string)user!["displayName"],
+                        viewers = (user["stream"] as IDictionary)?["viewersCount"] as int?,
+                    })
+                    .OrderByDescending(partner => partner.viewers ?? -1)
+                    .ToList<object>();
+
+                if (partners.Count > 0) liveWith[channelId] = partners;
+            }
+        }
+        catch (HttpRequestException error)
+        {
+            Trace.WriteLine($"Loading Stream Together sessions failed: {error.Message}");
+        }
+
+        return liveWith;
     }
 
     /// <summary>

@@ -500,10 +500,29 @@ ul {
   color: var(--text-dim);
 }
 
-.channel-tooltip-status::before {
+.channel-tooltip-status::before,
+.channel-tooltip-partner-viewers::before {
   content: '\25CF';
   margin-right: 4px;
   color: var(--red);
+}
+
+.channel-tooltip-section {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--surface-hover);
+  color: var(--text-dim);
+}
+
+.channel-tooltip-partner {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.channel-tooltip-partner-viewers {
+  color: var(--text-dim);
 }
 
 /* ─── Import Modal ──────────────────────────────────────────────── */
