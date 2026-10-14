@@ -10,6 +10,11 @@ import Hls from './vendor/hls.light.mjs';
 
 const TILE_MIN_HEIGHT = 360;
 const BACK_BUFFER_SECONDS = 10;
+// Distance to the live edge. Twitch announces a 6 s target duration for 2 s segments, so hls.js's
+// default (3 × target duration) would play 18 s behind. 4 s = 2 segments of buffer, enough for
+// seamless quality switches; beyond 10 s (after stalls) the player jumps back to the live edge.
+const LIVE_SYNC_SECONDS = 4;
+const LIVE_MAX_LATENCY_SECONDS = 10;
 const OFFLINE_RETRY_MS = 30_000;
 const ERROR_RETRY_MS = 5_000;
 const HTTP_FORBIDDEN = 403;
@@ -87,7 +92,11 @@ export function createPlayer(
 
   function start() {
     levels = null;
-    hls = new Hls({ backBufferLength: BACK_BUFFER_SECONDS });
+    hls = new Hls({
+      backBufferLength: BACK_BUFFER_SECONDS,
+      liveSyncDuration: LIVE_SYNC_SECONDS,
+      liveMaxLatencyDuration: LIVE_MAX_LATENCY_SECONDS,
+    });
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       levels = { source: findSourceLevel(hls.levels), tile: findTileLevel(hls.levels) };
@@ -154,13 +163,20 @@ export function createPlayer(
       audio.apply(isFocused, volume);
     },
 
-    /** Currently displayed rendition, e.g. "1080p60" (dev badge). */
+    /**
+     * Dev badge: displayed rendition and delay behind the live broadcast,
+     * e.g. "1080p60 · 6.2 s" (from the stream's PROGRAM-DATE-TIME).
+     */
     qualityLabel() {
       if (!hls || !video.videoHeight) return '…';
 
       const frameRate = hls.levels[hls.currentLevel]?.frameRate ?? 0;
+      const rendition = `${video.videoHeight}p${Math.round(frameRate)}`;
+      if (!hls.playingDate) return rendition;
 
-      return `${video.videoHeight}p${Math.round(frameRate)}`;
+      const delaySeconds = (Date.now() - hls.playingDate.getTime()) / 1000;
+
+      return `${rendition} · ${delaySeconds.toFixed(1)} s`;
     },
 
     destroy() {
