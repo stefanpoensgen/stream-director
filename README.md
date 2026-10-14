@@ -44,9 +44,11 @@ The app runs as a frameless window. Controls are in the bottom-left corner:
 
 - **Drag** the logo area to move the window
 - **Menu** toggles the sidebar
-- **Login** opens Twitch login — the login is used for all streams, so a Twitch Turbo subscription removes ads everywhere. Once logged in, the button turns into **Logout**
+- **Login** opens the Twitch login window, which closes by itself once you are logged in. The login is used for all streams, so a Twitch Turbo subscription removes ads everywhere. While logged in, the button turns into **Logout**
 - **Chat** opens the chat of the focused channel in a popup
 - **Close** (✕) closes the app
+
+Settings, channel list and Twitch login are stored in `%LOCALAPPDATA%\StreamDirector`. Delete that folder to reset the app.
 
 ## Layout
 
@@ -93,9 +95,12 @@ Renderer changes need a `dotnet build` (it copies them next to the exe), then F5
 
 ```
 host/                    C# WebView2 host (.NET Framework 4.8)
-  MainForm.cs            Frameless window, Twitch popups + login cookie, F11
-  AppRequestHandler.cs   Answers https://localhost/* in-process: renderer files + Twitch proxy API
+  MainForm.cs            Frameless window, popups, F11, version label
+  AppRequestHandler.cs   Answers https://localhost/* in-process: renderer files + API
   TwitchClient.cs        Twitch API client (live status, HLS playlists)
+  TwitchSession.cs       Login state (WebView2 cookie store), logout
+  LoginForm.cs           Twitch login window, closes itself after login
+  NativeMethods.cs       Win32 icon loading
 index.html               App shell
 app.js                   State management, layout, player lifecycle, volume, hotkeys
 player.js                HLS player per channel (tile/focus quality switching)
@@ -104,6 +109,15 @@ vendor/                  Vendored hls.js (light build)
 ```
 
 There is no local web server: WebView2 hands every request for `https://localhost` to the host. The origin has to be `localhost` — Twitch's playlist servers reject other origins.
+
+The renderer only talks HTTP to the host:
+
+| Endpoint                        | Purpose                                       |
+| ------------------------------- | --------------------------------------------- |
+| `GET /api/live?channels=a,b`    | Which of the channels are streaming           |
+| `GET /api/playlist/<name>.m3u8` | HLS master playlist (with Turbo token if any) |
+| `GET /api/auth`                 | `{ "loggedIn": true/false }`                  |
+| `POST /api/logout`              | Drop the Twitch session                       |
 
 State is persisted in `localStorage`. Max 14 simultaneous players with LRU eviction.
 
