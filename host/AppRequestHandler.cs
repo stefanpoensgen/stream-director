@@ -69,7 +69,7 @@ internal sealed class AppRequestHandler(
         if (uri.AbsolutePath == FollowedLiveRoute) return await FollowedLiveAsync();
 
         var playlistMatch = PlaylistRoute.Match(uri.AbsolutePath);
-        if (playlistMatch.Success) return await PlaylistAsync(playlistMatch.Groups[1].Value);
+        if (playlistMatch.Success) return await PlaylistAsync(playlistMatch.Groups[1].Value, QueryValue(uri, "lowLatency") == "1");
 
         return Static(uri.AbsolutePath);
     }
@@ -86,11 +86,12 @@ internal sealed class AppRequestHandler(
         return Response(200, _json.Serialize(liveChannels), JsonContentType);
     }
 
-    private async Task<CoreWebView2WebResourceResponse> PlaylistAsync(string channel)
+    private async Task<CoreWebView2WebResourceResponse> PlaylistAsync(string channel, bool lowLatency)
     {
         if (!TwitchClient.IsValidChannelName(channel)) return Text(400, "Invalid channel name");
 
-        var (status, playlist) = await twitch.FetchMasterPlaylistAsync(channel, await session.GetAuthTokenAsync());
+        var authToken = await session.GetAuthTokenAsync();
+        var (status, playlist) = await twitch.FetchMasterPlaylistAsync(channel, authToken, lowLatency);
 
         return status switch
         {

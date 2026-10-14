@@ -26,6 +26,7 @@ const state = {
   lru: [], // LRU tracking — most recently used at end
   lastFocus: null, // previous focus for 'F' hotkey recall
   sidebarCollapsed: false, // sidebar visibility
+  lowLatency: false, // Twitch prefetch segments: closer to live, less buffer
 };
 
 // ─── Player Registry ────────────────────────────────────────────────
@@ -48,6 +49,7 @@ function cacheDom() {
   dom.channelList = document.getElementById('channel-list');
   dom.followed = document.getElementById('followed');
   dom.followedList = document.getElementById('followed-list');
+  dom.lowLatency = document.getElementById('low-latency');
   dom.sidebarToggle = document.getElementById('sidebar-toggle');
   dom.addChannelForm = document.getElementById('add-channel-form');
   dom.addChannelInput = document.getElementById('add-channel-input');
@@ -141,6 +143,7 @@ function saveState() {
           lru: state.lru,
           lastFocus: state.lastFocus,
           sidebarCollapsed: state.sidebarCollapsed,
+          lowLatency: state.lowLatency,
         }),
       );
     } catch {
@@ -187,6 +190,7 @@ function restoreState() {
     state.focus = valid.has(data.focus) ? data.focus : null;
     state.lastFocus = valid.has(data.lastFocus) ? data.lastFocus : null;
     state.sidebarCollapsed = data.sidebarCollapsed === true;
+    state.lowLatency = data.lowLatency === true;
 
     // Trim live set to max
     while (state.liveSet.size > DEFAULT_MAX_PLAYERS) {
@@ -615,6 +619,25 @@ function showVolumeOsd(entry, volume) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Low latency (applies to new players — all players restart)
+// ═══════════════════════════════════════════════════════════════════
+
+function setLowLatency(enabled) {
+  state.lowLatency = enabled;
+  saveState();
+  restartPlayers();
+}
+
+function restartPlayers() {
+  for (const [, entry] of players) {
+    entry.player.destroy();
+    entry.container.remove();
+  }
+  players.clear();
+  syncPlayers();
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // Sidebar Collapse
 // ═══════════════════════════════════════════════════════════════════
 
@@ -842,6 +865,7 @@ function createPlayerSlot(name) {
 
   const player = createPlayer(name, container, {
     audioRelay,
+    lowLatency: state.lowLatency,
     onOnline() {
       badge.classList.add('hidden');
       onlineSet.add(name);
@@ -1013,6 +1037,8 @@ function bindEvents() {
   dom.sidebarToggle.addEventListener('click', toggleSidebar);
   dom.twitchLogin.addEventListener('click', toggleLogin);
   dom.chatBtn.addEventListener('click', openChat);
+  dom.lowLatency.checked = state.lowLatency;
+  dom.lowLatency.addEventListener('change', () => setLowLatency(dom.lowLatency.checked));
 
   // Import
   dom.importBtn.addEventListener('click', showImportModal);

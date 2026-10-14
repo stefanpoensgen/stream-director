@@ -20,6 +20,43 @@ const ERROR_RETRY_MS = 5_000;
 const HTTP_FORBIDDEN = 403;
 const HTTP_NOT_FOUND = 404;
 
+const PREFETCH_TAG = '#EXT-X-TWITCH-PREFETCH:';
+const EXTINF_TAG = '#EXTINF:';
+
+/**
+ * Low latency: Twitch lists segments that are still being produced as
+ * #EXT-X-TWITCH-PREFETCH lines, which hls.js does not know. They become regular
+ * segments (as streamlink does), so playback runs that much closer to live.
+ */
+function withPrefetchSegments(playlist) {
+  let duration = '2.000';
+
+  return playlist
+    .split('\n')
+    .map((line) => {
+      if (line.startsWith(EXTINF_TAG)) duration = line.slice(EXTINF_TAG.length).split(',')[0];
+      if (!line.startsWith(PREFETCH_TAG)) return line;
+
+      return `${EXTINF_TAG}${duration},\n${line.slice(PREFETCH_TAG.length)}`;
+    })
+    .join('\n');
+}
+
+/** Playlist loader that rewrites Twitch's prefetch lines before hls.js parses the playlist. */
+class LowLatencyPlaylistLoader extends Hls.DefaultConfig.loader {
+  load(context, config, callbacks) {
+    const { onSuccess } = callbacks;
+
+    super.load(context, config, {
+      ...callbacks,
+      onSuccess(response, stats, loaderContext, networkDetails) {
+        if (typeof response.data === 'string') response.data = withPrefetchSegments(response.data);
+        onSuccess(response, stats, loaderContext, networkDetails);
+      },
+    });
+  }
+}
+
 function findSourceLevel(levels) {
   return levels.reduce((bestIndex, level, index) => {
     const best = levels[bestIndex];
@@ -73,7 +110,7 @@ function createAudioOutput(video, audioRelay) {
 export function createPlayer(
   channel,
   container,
-  { audioRelay, onOnline, onOffline, onUnavailable },
+  { audioRelay, lowLatency, onOnline, onOffline, onUnavailable },
 ) {
   const video = document.createElement('video');
   video.muted = true;
@@ -96,6 +133,7 @@ export function createPlayer(
       backBufferLength: BACK_BUFFER_SECONDS,
       liveSyncDuration: LIVE_SYNC_SECONDS,
       liveMaxLatencyDuration: LIVE_MAX_LATENCY_SECONDS,
+      ...(lowLatency && { pLoader: LowLatencyPlaylistLoader }),
     });
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -120,7 +158,7 @@ export function createPlayer(
       restartAfter(isPermanent ? OFFLINE_RETRY_MS : ERROR_RETRY_MS);
     });
 
-    hls.loadSource(`/api/playlist/${channel}.m3u8`);
+    hls.loadSource(`/api/playlist/${channel}.m3u8${lowLatency ? '?lowLatency=1' : ''}`);
     hls.attachMedia(video);
   }
 
