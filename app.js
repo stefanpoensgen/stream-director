@@ -11,6 +11,10 @@ const DEFAULT_MAX_PLAYERS = 14;
 const LIVE_CHECK_INTERVAL_MS = 60_000;
 const QUALITY_BADGE_INTERVAL_MS = 2000;
 const RESOLUTION_REFRESH_MS = 1000;
+// Content wider than this (e.g. 3440×1440 fullscreen) puts the tiles left and right of the focus
+const WIDE_ASPECT_RATIO = 2.1;
+const VIDEO_ASPECT_RATIO = 16 / 9;
+const GRID_GAP_PX = 4;
 const DEFAULT_VOLUME = 1;
 const VOLUME_STEP_PERCENT = 5;
 const VOLUME_OSD_DURATION_MS = 1200;
@@ -78,6 +82,9 @@ function init() {
   renderSidebar();
   syncPlayers();
   bindEvents();
+
+  // Window resize, F11 and the sidebar change the content size — and maybe the layout kind
+  new ResizeObserver(() => updateGridLayout()).observe(dom.content);
 
   checkAllLive();
   setInterval(checkAllLive, LIVE_CHECK_INTERVAL_MS);
@@ -764,9 +771,9 @@ function applySidebarState() {
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Update CSS Grid layout: L-shape arrangement.
+ * Update CSS Grid layout. Wide content (see WIDE_ASPECT_RATIO) uses layoutWide();
+ * everything else the L-shape arrangement made for 1920×1080 OBS capture:
  *
- * Fixed pixel layout for 1920×1080 (minus sidebar):
  * - Left column:  240px wide, full height, tiles stacked vertically
  * - Focus:        remaining width × 945px (16:9), top-right area
  * - Bottom row:   135px height, tiles from col 2 onward
@@ -812,6 +819,11 @@ function updateGridLayout() {
     dom.content.style.gridAutoRows = '';
     dom.branding.style.gridRow = '2';
     dom.branding.style.gridColumn = '1';
+    return;
+  }
+
+  if (isWideLayout()) {
+    layoutWide(focusName, tileNames);
     return;
   }
 
@@ -874,6 +886,50 @@ function updateGridLayout() {
   // Branding in bottom-left
   dom.branding.style.gridRow = `${bottomRow}`;
   dom.branding.style.gridColumn = '1';
+}
+
+function isWideLayout() {
+  const { clientWidth, clientHeight } = dom.content;
+
+  return clientHeight > 0 && clientWidth / clientHeight >= WIDE_ASPECT_RATIO;
+}
+
+/**
+ * Wide screens: focus centered at full height in 16:9, tiles alternating left and
+ * right in one column each, branding at the bottom of the left column.
+ */
+function layoutWide(focusName, tileNames) {
+  const { clientWidth: width, clientHeight: height } = dom.content;
+  const focusWidth = Math.min(width - 2 * GRID_GAP_PX, Math.round(height * VIDEO_ASPECT_RATIO));
+  const sideWidth = Math.max(0, (width - focusWidth - 2 * GRID_GAP_PX) / 2);
+
+  const leftTiles = Math.ceil(tileNames.length / 2);
+  const rightTiles = Math.floor(tileNames.length / 2);
+
+  // As many rows as 16:9 tiles of the side width fit; more only when the tiles need them
+  const fittingRows = Math.max(
+    1,
+    Math.floor(height / (sideWidth / VIDEO_ASPECT_RATIO + GRID_GAP_PX)),
+  );
+  const rows = Math.max(fittingRows, leftTiles + 1, rightTiles);
+
+  dom.content.style.gridTemplateColumns = `minmax(0, 1fr) ${focusWidth}px minmax(0, 1fr)`;
+  dom.content.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
+  const focus = players.get(focusName).container.style;
+  focus.gridColumn = '2';
+  focus.gridRow = '1 / -1';
+
+  tileNames.forEach((name, index) => {
+    const style = players.get(name)?.container.style;
+    if (!style) return;
+
+    style.gridColumn = index % 2 === 0 ? '1' : '3';
+    style.gridRow = String(Math.floor(index / 2) + 1);
+  });
+
+  dom.branding.style.gridColumn = '1';
+  dom.branding.style.gridRow = String(rows);
 }
 
 /**

@@ -564,6 +564,10 @@ ul {
  * grid-template set by JS (updateGridLayout).                       */
 .content {
   flex: 1;
+  /* Never wider/taller than the window: a fixed-width grid column must not grow the area
+     (it would keep the wide layout active after the window got narrower again) */
+  min-width: 0;
+  min-height: 0;
   display: grid;
   gap: 4px;
   padding: 0;

@@ -73,10 +73,12 @@ Hovering the focus shows its name with the resolution actually on screen (e.g. `
 
 ## Layout
 
-- **Left column**: up to 7 tiles stacked vertically
-- **Focus**: the large area top-right
-- **Bottom row**: further tiles
-- **Bottom-left corner**: logo and buttons
+The layout follows the shape of the window:
+
+- **16:9 (e.g. 1920×1080 for OBS):** an L shape — up to 7 tiles in the left column, the focus top-right, further tiles in the bottom row, logo and buttons bottom-left.
+- **Ultrawide (wider than about 2.1:1, e.g. 3440×1440 in fullscreen):** the focus in the middle at full height, tiles alternating left and right of it, logo and buttons at the bottom of the left column.
+
+The layout switches by itself when the window size changes (F11, sidebar, resizing); players keep running.
 
 At most 14 streams play at the same time. Switching on one more stops the one you used longest ago.
 
