@@ -4,7 +4,9 @@ Watch many Twitch streams at once and direct which one is in focus — built to 
 
 StreamDirector shows up to 14 Twitch channels in one 1920×1080 window: one large **focus** stream with sound, the others as small muted **tiles** around it. Switch the focus with a click or the arrow keys and the window becomes your live "director's cut" — ideal for covering events, co-streams or tournaments where many streamers play at the same time.
 
-![StreamDirector Preview](preview.jpg)
+[![StreamDirector Preview](preview.jpg)](demo.mp4)
+
+▶ **[Watch the demo](demo.mp4)** (44 s, 14 WoW streams: focus switch, hotkeys, volume, channel list)
 
 > [!WARNING]
 > **The app is not code-signed.** Windows SmartScreen may warn on first launch: click **More info** → **Run anyway**.
