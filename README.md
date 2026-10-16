@@ -6,6 +6,9 @@ StreamDirector shows up to 14 Twitch channels in one 1920×1080 window: one larg
 
 ![StreamDirector Preview](preview.jpg)
 
+> [!WARNING]
+> **The app is not code-signed.** Windows SmartScreen may warn on first launch: click **More info** → **Run anyway**.
+
 ## Features
 
 - **Multiview** — up to 14 streams in an L-shaped layout made for a 1920×1080 OBS scene
@@ -22,7 +25,6 @@ StreamDirector shows up to 14 Twitch channels in one 1920×1080 window: one larg
 Download `StreamDirector-<version>.exe` from the [latest release](https://github.com/stefanpoensgen/stream-director/releases/latest) and run it.
 
 - Requires **Windows 10 or 11**. Everything else (the WebView2 browser engine and .NET Framework 4.8) is part of Windows and updated by Windows Update.
-- The app is not code-signed, so Windows SmartScreen may warn on first launch: click **More info** → **Run anyway**.
 
 ## Getting started
 
