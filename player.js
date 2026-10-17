@@ -13,8 +13,10 @@ const BACK_BUFFER_SECONDS = 10;
 // Distance to the live edge. Twitch announces a 6 s target duration for 2 s segments, so hls.js's
 // default (3 × target duration) would play 18 s behind. 4 s = 2 segments of buffer, enough for
 // seamless quality switches; beyond 10 s (after stalls) the player jumps back to the live edge.
+// In between, playback speeds up slightly (pitch preserved) until it is back at the 4 s.
 const LIVE_SYNC_SECONDS = 4;
 const LIVE_MAX_LATENCY_SECONDS = 10;
+const LIVE_CATCH_UP_RATE = 1.1;
 const OFFLINE_RETRY_MS = 30_000;
 const ERROR_RETRY_MS = 5_000;
 const HTTP_FORBIDDEN = 403;
@@ -96,6 +98,7 @@ export function createPlayer(
       backBufferLength: BACK_BUFFER_SECONDS,
       liveSyncDuration: LIVE_SYNC_SECONDS,
       liveMaxLatencyDuration: LIVE_MAX_LATENCY_SECONDS,
+      maxLiveSyncPlaybackRate: LIVE_CATCH_UP_RATE,
     });
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
