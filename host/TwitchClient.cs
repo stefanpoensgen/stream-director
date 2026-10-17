@@ -27,6 +27,7 @@ internal sealed class TwitchClient
     private const string ClientId = "kimne78kx3ncx6brgo4mv6wki5h1ko";
     private const string UsherUrl = "https://usher.ttvnw.net/api/channel/hls";
     private const int LiveCheckBatchSize = 100; // users(logins:) takes at most 100 logins
+    private const int AvatarWidth = 70; // profileImageURL only accepts Twitch's fixed sizes (28, 50, 70, 150, 300, 600)
 
     private const string PlaybackTokenQuery = """
         query PlaybackAccessToken($login: String!) {
@@ -48,6 +49,9 @@ internal sealed class TwitchClient
     private readonly HttpClient _http = new();
     private readonly JavaScriptSerializer _json = new();
     private readonly Random _random = new();
+
+    // Channel name → its profile image; avatars hardly ever change, so once per session is enough
+    private readonly Dictionary<string, (byte[] Content, string ContentType)> _avatars = new();
 
     public static bool IsValidChannelName(string name) => ChannelNamePattern.IsMatch(name);
 
@@ -127,6 +131,26 @@ internal sealed class TwitchClient
         }
 
         return liveWith;
+    }
+
+    /// <summary>The profile image of a channel, or null for unknown channels.</summary>
+    public async Task<(byte[] Content, string ContentType)?> FetchAvatarAsync(string channel)
+    {
+        if (_avatars.TryGetValue(channel, out var cached)) return cached;
+
+        var data = await GqlAsync(new
+        {
+            query = $"query {{ user(login: \"{channel}\") {{ profileImageURL(width: {AvatarWidth}) }} }}",
+        });
+        if ((data["user"] as IDictionary)?["profileImageURL"] is not string imageUrl) return null;
+
+        using var response = await _http.GetAsync(imageUrl);
+        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"Twitch CDN responded {(int)response.StatusCode}");
+
+        var avatar = (await response.Content.ReadAsByteArrayAsync(), response.Content.Headers.ContentType.MediaType);
+        _avatars[channel] = avatar;
+
+        return avatar;
     }
 
     /// <summary>

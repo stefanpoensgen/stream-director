@@ -985,7 +985,13 @@ function createPlayerSlot(name) {
   // Label overlay
   const label = document.createElement('div');
   label.className = 'player-label';
-  label.textContent = name;
+  // Many channels are easier to recognize by their profile image than by name
+  const avatar = document.createElement('img');
+  avatar.className = 'player-avatar';
+  avatar.src = `/api/avatar/${name}`;
+  avatar.alt = '';
+  avatar.addEventListener('error', () => avatar.remove());
+  label.append(avatar, name);
   // Shown with the name while hovering the focus (see updateFocusResolution)
   const resolution = document.createElement('span');
   resolution.className = 'player-resolution';

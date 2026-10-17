@@ -41,6 +41,7 @@ internal sealed class AppRequestHandler(
     private const string FollowedRoute = "/api/follows";
     private const string FollowsConnectRoute = "/api/follows/connect";
     private static readonly Regex PlaylistRoute = new(@"^/api/playlist/([a-z0-9_]+)\.m3u8$");
+    private static readonly Regex AvatarRoute = new(@"^/api/avatar/([a-z0-9_]+)$");
 
     private readonly JavaScriptSerializer _json = new();
 
@@ -75,6 +76,9 @@ internal sealed class AppRequestHandler(
         var playlistMatch = PlaylistRoute.Match(uri.AbsolutePath);
         if (playlistMatch.Success) return await PlaylistAsync(playlistMatch.Groups[1].Value);
 
+        var avatarMatch = AvatarRoute.Match(uri.AbsolutePath);
+        if (avatarMatch.Success) return await AvatarAsync(avatarMatch.Groups[1].Value);
+
         return Static(uri.AbsolutePath);
     }
 
@@ -103,6 +107,15 @@ internal sealed class AppRequestHandler(
             PlaylistStatus.Forbidden => Text(403, "Playback not allowed"),
             _ => Response(200, playlist!, PlaylistContentType),
         };
+    }
+
+    private async Task<CoreWebView2WebResourceResponse> AvatarAsync(string channel)
+    {
+        if (!TwitchClient.IsValidChannelName(channel)) return Text(400, "Invalid channel name");
+
+        var avatar = await twitch.FetchAvatarAsync(channel);
+
+        return avatar is { } image ? Response(200, image.Content, image.ContentType) : Text(404, "Unknown channel");
     }
 
     /// <summary>{ connected: false } until the follows are connected, then { connected: true, channels: [all follows] }.</summary>

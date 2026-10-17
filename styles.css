@@ -710,6 +710,14 @@ ul {
   transition: opacity var(--transition);
 }
 
+.player-avatar {
+  width: 20px;
+  height: 20px;
+  margin: -3px 7px -3px -6px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
 .player-slot.is-tile .player-label {
   opacity: 1;
 }
