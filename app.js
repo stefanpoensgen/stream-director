@@ -306,8 +306,7 @@ function setFocus(name) {
   state.focus = name;
   touchLru(name);
 
-  // Update chat popup if open
-  if (chatWindow && !chatWindow.closed) openChat();
+  followFocusInChat();
 
   syncPlayers();
   renderSidebar();
@@ -580,18 +579,27 @@ async function toggleLogin() {
   location.reload();
 }
 
-/** Open or update Twitch chat popup for the currently focused channel. */
 let chatWindow = null;
 
+function focusChatUrl() {
+  return `https://www.twitch.tv/popout/${state.focus}/chat?popout=`;
+}
+
+/** Open the Twitch chat popup for the focused channel, or bring the open one to the front. */
 function openChat() {
   if (!state.focus) return;
-  const url = `https://www.twitch.tv/popout/${state.focus}/chat?popout=`;
+
   if (chatWindow && !chatWindow.closed) {
-    chatWindow.location = url;
+    chatWindow.location = focusChatUrl();
     chatWindow.focus();
   } else {
-    chatWindow = window.open(url, 'sd-chat');
+    chatWindow = window.open(focusChatUrl(), 'sd-chat');
   }
+}
+
+/** An open chat popup follows the focus — without focusing it, the hotkeys must stay with the app. */
+function followFocusInChat() {
+  if (chatWindow && !chatWindow.closed) chatWindow.location = focusChatUrl();
 }
 
 /** Remove a channel from the pool and clean up any live/focus state. */
