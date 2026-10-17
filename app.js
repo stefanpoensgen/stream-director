@@ -1527,6 +1527,12 @@ function bindEvents() {
     hideImportModal();
   });
 
+  // A mouse click must not leave the button focused — the next hotkey would show its focus ring
+  // (detail 0: pressed by keyboard, keeping the focus there)
+  document.addEventListener('click', (event) => {
+    if (event.detail > 0) event.target.closest('button')?.blur();
+  });
+
   // Dropped files or links must not replace the app page — only our own drags are accepted
   window.addEventListener('dragover', (event) => {
     if (event.dataTransfer.types.includes(DRAG_TYPE)) return;
