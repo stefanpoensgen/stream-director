@@ -8,6 +8,8 @@ import { createPlayer } from './player.js';
 // ─── Configuration ──────────────────────────────────────────────────
 const STORAGE_KEY = 'stream-director';
 const DEFAULT_MAX_PLAYERS = 14;
+// How many streams share the focus area: 1 (full), 2 (halves) or 4 (quarters)
+const VIEW_SIZES = [1, 2, 4];
 const LIVE_CHECK_INTERVAL_MS = 60_000;
 const QUALITY_BADGE_INTERVAL_MS = 2000;
 const RESOLUTION_REFRESH_MS = 1000;
@@ -30,7 +32,9 @@ const IS_DEV = new URL(location.href).searchParams.has('dev');
 const state = {
   channels: [], // { name, volume? } — persisted in localStorage
   liveSet: new Set(), // channel names with active players
-  focus: null, // currently focused channel name
+  focus: null, // marked focus channel — volume keys, mute and chat act on it
+  viewSize: 1, // one of VIEW_SIZES
+  focusGroup: [], // channels in the focus area in slot order, at most viewSize — always contains `focus`
   lru: [], // LRU tracking — most recently used at end
   lastFocus: null, // previous focus for 'F' hotkey recall
   sidebarCollapsed: false, // sidebar visibility
@@ -56,6 +60,7 @@ function cacheDom() {
   dom.app = document.getElementById('app');
   dom.content = document.getElementById('content');
   dom.focusEmpty = document.getElementById('focus-empty');
+  dom.viewSwitch = document.getElementById('view-switch');
   dom.channelList = document.getElementById('channel-list');
   dom.channelTooltip = document.getElementById('channel-tooltip');
   dom.sidebarToggle = document.getElementById('sidebar-toggle');
@@ -82,6 +87,7 @@ function init() {
 
   restoreState();
   applySidebarState();
+  syncViewSwitch();
 
   renderSidebar();
   syncPlayers();
@@ -162,6 +168,8 @@ function saveState() {
           channels: state.channels,
           live: [...state.liveSet],
           focus: state.focus,
+          viewSize: state.viewSize,
+          focusGroup: state.focusGroup,
           lru: state.lru,
           lastFocus: state.lastFocus,
           sidebarCollapsed: state.sidebarCollapsed,
@@ -209,7 +217,9 @@ function restoreState() {
 
     state.lru = knownNames(data.lru);
     state.liveSet = new Set(knownNames(data.live));
-    state.focus = valid.has(data.focus) ? data.focus : null;
+    state.focus = valid.has(data.focus) && state.liveSet.has(data.focus) ? data.focus : null;
+    state.viewSize = VIEW_SIZES.includes(data.viewSize) ? data.viewSize : 1;
+    state.focusGroup = restoreFocusGroup(knownNames(data.focusGroup));
     state.lastFocus = valid.has(data.lastFocus) ? data.lastFocus : null;
     state.sidebarCollapsed = data.sidebarCollapsed === true;
 
@@ -224,6 +234,14 @@ function restoreState() {
   }
 }
 
+/** Only live, unique channels, at most viewSize — and always the marked focus. */
+function restoreFocusGroup(saved) {
+  const group = [...new Set(saved)].filter((name) => state.liveSet.has(name));
+  if (state.focus && !group.includes(state.focus)) group.unshift(state.focus);
+
+  return state.focus ? group.slice(0, state.viewSize) : [];
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // LRU Management
 // ═══════════════════════════════════════════════════════════════════
@@ -235,17 +253,12 @@ function touchLru(name) {
   state.lru.push(name);
 }
 
-/** Find the least-recently-used live channel that isn't the current focus. */
+/** Find the least-recently-used live channel that isn't in focus. */
 function findEvictionTarget() {
-  // Walk LRU from oldest → newest
-  for (const name of state.lru) {
-    if (state.liveSet.has(name) && name !== state.focus) return name;
-  }
-  // Fallback: any live channel that isn't focus
-  for (const name of state.liveSet) {
-    if (name !== state.focus) return name;
-  }
-  return null;
+  const isEvictable = (name) => state.liveSet.has(name) && !state.focusGroup.includes(name);
+
+  // Walk LRU from oldest → newest; fallback: any live channel that isn't in focus
+  return state.lru.find(isEvictable) ?? [...state.liveSet].find(isEvictable) ?? null;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -268,22 +281,32 @@ function addLive(name) {
 
 function removeLive(name) {
   state.liveSet.delete(name);
-  if (state.focus === name) state.focus = null;
+  state.focusGroup = state.focusGroup.filter((n) => n !== name);
+  // The mark moves to another focus stream, if there is one
+  if (state.focus === name) state.focus = state.focusGroup[0] ?? null;
   // DOM cleanup is handled by syncPlayers in the correct order
+}
+
+/** Auto-focus another live channel when the last focus stream was switched off or removed. */
+function focusAnyLive() {
+  const next = getOrderedLiveChannels()[0];
+  if (state.focus || !next) return;
+
+  joinFocusGroup(next);
+  state.focus = next;
 }
 
 function toggleLive(name) {
   if (state.liveSet.has(name)) {
     removeLive(name);
-    // Auto-focus another live channel if the focused one was toggled off
-    if (!state.focus) {
-      const next = getOrderedLiveChannels()[0];
-      if (next) state.focus = next;
-    }
+    focusAnyLive();
   } else {
     addLive(name);
-    // Nothing in focus yet (e.g. the first channel) — the activated channel takes it
-    if (!state.focus) state.focus = name;
+    // A free focus slot (e.g. the first channel) — the activated channel takes it
+    if (state.focusGroup.length < state.viewSize) {
+      joinFocusGroup(name);
+      state.focus ??= name;
+    }
   }
   syncPlayers();
   renderSidebar();
@@ -303,6 +326,7 @@ function setFocus(name) {
   // Auto-activate if not live
   if (!state.liveSet.has(name)) addLive(name);
 
+  joinFocusGroup(name);
   state.focus = name;
   touchLru(name);
 
@@ -313,9 +337,58 @@ function setFocus(name) {
   saveState();
 }
 
-/** Cycle focus through live tiles (direction: +1 or -1). */
+/** Puts `name` into the focus area — into a free slot, else in place of the stream focused longest ago. */
+function joinFocusGroup(name) {
+  const group = state.focusGroup;
+  if (group.includes(name)) return;
+
+  if (group.length < state.viewSize) {
+    group.push(name);
+    return;
+  }
+
+  // LRU: oldest first
+  const oldest = state.lru.find((n) => group.includes(n)) ?? group[0];
+  group[group.indexOf(oldest)] = name;
+}
+
+/**
+ * Switches between 1, 2 and 4 focus streams. The marked focus stays, the most recently
+ * used streams fill the other slots; streams that stay in focus keep their slot.
+ */
+function setViewSize(size) {
+  if (size === state.viewSize) return;
+
+  const byRecency = [...state.lru].reverse().filter((name) => state.liveSet.has(name));
+  const membersByRecency = byRecency.filter((name) => state.focusGroup.includes(name));
+  const wanted = [...new Set([state.focus, ...membersByRecency, ...byRecency])]
+    .filter(Boolean)
+    .slice(0, size);
+
+  state.viewSize = size;
+  state.focusGroup = [
+    ...state.focusGroup.filter((name) => wanted.includes(name)),
+    ...wanted.filter((name) => !state.focusGroup.includes(name)),
+  ];
+
+  syncPlayers();
+  renderSidebar();
+  syncViewSwitch();
+  saveState();
+}
+
+function syncViewSwitch() {
+  for (const button of dom.viewSwitch.children) {
+    button.classList.toggle('is-active', Number(button.dataset.viewSize) === state.viewSize);
+  }
+}
+
+/**
+ * Cycle focus through live tiles (direction: +1 or -1).
+ * With several focus streams, the mark moves between them instead.
+ */
 function cycleFocus(direction) {
-  const ordered = getOrderedLiveChannels();
+  const ordered = state.viewSize > 1 ? state.focusGroup : getOrderedLiveChannels();
   if (ordered.length === 0) return;
 
   const idx = ordered.indexOf(state.focus);
@@ -607,11 +680,8 @@ function removeChannel(name) {
   const idx = state.channels.findIndex((c) => c.name === name);
   if (idx === -1) return;
 
-  const wasFocus = state.focus === name;
-
   // Clean up if this channel is live or focused
   if (state.liveSet.has(name)) removeLive(name);
-  if (state.focus === name) state.focus = null;
   if (state.lastFocus === name) state.lastFocus = null;
   state.lru = state.lru.filter((n) => n !== name);
 
@@ -622,11 +692,7 @@ function removeChannel(name) {
     sidebarItems.delete(name);
   }
 
-  // Auto-focus another live channel if the focused one was removed
-  if (wasFocus && !state.focus) {
-    const next = getOrderedLiveChannels()[0];
-    if (next) state.focus = next;
-  }
+  focusAnyLive();
 
   syncPlayers();
   renderSidebar();
@@ -785,11 +851,8 @@ function applySidebarState() {
  * stretches; the left column stays 240px, focus fills the rest.
  */
 function updateGridLayout() {
-  const focusName = state.focus;
-  const ordered = getOrderedLiveChannels();
-  const tileNames = ordered.filter((n) => n !== focusName);
-  const n = tileNames.length;
-  const hasFocus = focusName && players.has(focusName);
+  const focusNames = state.focusGroup.filter((name) => players.has(name));
+  const tileNames = getOrderedLiveChannels().filter((name) => !state.focusGroup.includes(name));
 
   // Reset inline grid placement on all players
   for (const [, entry] of players) {
@@ -797,9 +860,22 @@ function updateGridLayout() {
     s.gridRow = '';
     s.gridColumn = '';
     s.order = '';
+    s.width = '';
+    s.height = '';
+    s.justifySelf = '';
+    s.alignSelf = '';
   }
 
   dom.content.style.gridAutoRows = '';
+
+  placeGrid(focusNames, tileNames);
+  splitFocusArea(focusNames);
+}
+
+/** Grid placement of the focus area (shared by all focus streams), the tiles and the branding. */
+function placeGrid(focusNames, tileNames) {
+  const n = tileNames.length;
+  const hasFocus = focusNames.length > 0;
 
   // ── Branding always in bottom-left (last row, col 1) ──
   // All branches below must set brandingRow before the end.
@@ -825,7 +901,7 @@ function updateGridLayout() {
   }
 
   if (isWideLayout()) {
-    layoutWide(focusName, tileNames);
+    layoutWide(focusNames, tileNames);
     return;
   }
 
@@ -833,9 +909,7 @@ function updateGridLayout() {
   if (n === 0) {
     dom.content.style.gridTemplateColumns = '240px 1fr';
     dom.content.style.gridTemplateRows = '1fr 135px';
-    const fe = players.get(focusName);
-    fe.container.style.gridRow = '1';
-    fe.container.style.gridColumn = '1 / -1';
+    placeFocusArea(focusNames, '1 / -1', '1');
     dom.branding.style.gridRow = '2';
     dom.branding.style.gridColumn = '1';
     return;
@@ -860,9 +934,7 @@ function updateGridLayout() {
   dom.content.style.gridTemplateRows = `repeat(${TOTAL_ROWS}, 1fr)`;
 
   // Focus spans all right columns, all left rows
-  const fe = players.get(focusName);
-  fe.container.style.gridColumn = '2 / -1';
-  fe.container.style.gridRow = `1 / ${TOTAL_ROWS}`;
+  placeFocusArea(focusNames, '2 / -1', `1 / ${TOTAL_ROWS}`);
 
   let idx = 0;
 
@@ -900,7 +972,7 @@ function isWideLayout() {
  * Wide screens: focus centered at full height in 16:9, tiles alternating left and
  * right in one column each, branding at the bottom of the left column.
  */
-function layoutWide(focusName, tileNames) {
+function layoutWide(focusNames, tileNames) {
   const { clientWidth: width, clientHeight: height } = dom.content;
   const focusWidth = Math.min(width - 2 * GRID_GAP_PX, Math.round(height * VIDEO_ASPECT_RATIO));
   const sideWidth = Math.max(0, (width - focusWidth - 2 * GRID_GAP_PX) / 2);
@@ -918,9 +990,7 @@ function layoutWide(focusName, tileNames) {
   dom.content.style.gridTemplateColumns = `minmax(0, 1fr) ${focusWidth}px minmax(0, 1fr)`;
   dom.content.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
 
-  const focus = players.get(focusName).container.style;
-  focus.gridColumn = '2';
-  focus.gridRow = '1 / -1';
+  placeFocusArea(focusNames, '2', '1 / -1');
 
   tileNames.forEach((name, index) => {
     const style = players.get(name)?.container.style;
@@ -934,14 +1004,46 @@ function layoutWide(focusName, tileNames) {
   dom.branding.style.gridRow = String(rows);
 }
 
+function placeFocusArea(focusNames, gridColumn, gridRow) {
+  for (const name of focusNames) {
+    const style = players.get(name).container.style;
+    style.gridColumn = gridColumn;
+    style.gridRow = gridRow;
+  }
+}
+
+/**
+ * Several focus streams share the focus grid area: sized in percent of it (no extra grid
+ * lines, so the tile layout stays as it is). Two sit side by side or stacked, whichever
+ * shows larger 16:9 pictures; three or four take the quarters.
+ */
+function splitFocusArea(focusNames) {
+  if (focusNames.length < 2) return;
+
+  // Still unsized, so the first one fills the whole area
+  const area = players.get(focusNames[0]).container.getBoundingClientRect();
+  const sideBySideWidth = Math.min(area.width / 2, area.height * VIDEO_ASPECT_RATIO);
+  const stackedWidth = Math.min(area.width, (area.height / 2) * VIDEO_ASPECT_RATIO);
+
+  const columns = focusNames.length > 2 || sideBySideWidth >= stackedWidth ? 2 : 1;
+  const rows = focusNames.length > 2 ? 2 : 3 - columns;
+  const share = (count) => (count === 1 ? '100%' : `calc(50% - ${GRID_GAP_PX / 2}px)`);
+
+  focusNames.forEach((name, index) => {
+    const style = players.get(name).container.style;
+    style.width = share(columns);
+    style.height = share(rows);
+    style.justifySelf = index % columns === 0 ? 'start' : 'end';
+    style.alignSelf = Math.floor(index / columns) === 0 ? 'start' : 'end';
+  });
+}
+
 /**
  * Reconcile DOM players with desired state.
  * All players are direct children of .content (CSS Grid).
  * L-shape layout — pure class toggle, players are never re-parented.
  */
 function syncPlayers() {
-  const shouldBeFocus = state.focus;
-
   // 1. Detach stale players from map, hide containers (no grid reflow yet)
   const staleContainers = [];
   for (const name of [...players.keys()]) {
@@ -962,11 +1064,13 @@ function syncPlayers() {
     }
   }
 
-  // 3. Toggle focus / tile CSS classes, quality and audio
+  // 3. Toggle focus / tile CSS classes, quality and audio — every focus stream is audible
+  const hasSeveralFocus = state.focusGroup.length > 1;
   for (const [name, entry] of players) {
-    const isFocus = name === shouldBeFocus;
+    const isFocus = state.focusGroup.includes(name);
     entry.container.classList.toggle('is-focus', isFocus);
     entry.container.classList.toggle('is-tile', !isFocus);
+    entry.container.classList.toggle('is-marked', hasSeveralFocus && name === state.focus);
     entry.player.setFocused(isFocus);
   }
 
@@ -1075,11 +1179,13 @@ function createPlayerSlot(name) {
 
 /** The focus label shows the rendition on screen — it changes from 360p to source after a switch. */
 function updateFocusResolution() {
-  const entry = players.get(state.focus);
-  if (!entry) return;
+  for (const name of state.focusGroup) {
+    const entry = players.get(name);
+    if (!entry) continue;
 
-  const rendition = entry.player.resolutionLabel();
-  entry.resolution.textContent = rendition ? ` · ${rendition}` : '';
+    const rendition = entry.player.resolutionLabel();
+    entry.resolution.textContent = rendition ? ` · ${rendition}` : '';
+  }
 }
 
 function updateQualityBadges() {
@@ -1146,7 +1252,7 @@ function renderSidebar() {
 
     const isLive = state.liveSet.has(row.name);
     li.classList.toggle('is-live', isLive);
-    li.classList.toggle('is-focus', state.focus === row.name);
+    li.classList.toggle('is-focus', state.focusGroup.includes(row.name));
     li._checkbox.checked = isLive;
     syncVolumeControls(row.name);
     li._liveBadge.classList.toggle('hidden', !row.online);
@@ -1318,6 +1424,10 @@ function bindEvents() {
   dom.sidebarToggle.addEventListener('click', toggleSidebar);
   dom.twitchLogin.addEventListener('click', toggleLogin);
   dom.chatBtn.addEventListener('click', openChat);
+  dom.viewSwitch.addEventListener('click', (event) => {
+    const size = Number(event.target.closest('[data-view-size]')?.dataset.viewSize);
+    if (VIEW_SIZES.includes(size)) setViewSize(size);
+  });
 
   // Reset window size — handled by the host window, so only offered inside it
   const host = window.chrome?.webview;
@@ -1388,6 +1498,12 @@ function handleHotkey(e) {
     case 'M':
       e.preventDefault();
       toggleFocusMute();
+      break;
+    case '1':
+    case '2':
+    case '4':
+      e.preventDefault();
+      setViewSize(Number(e.key));
       break;
   }
 }

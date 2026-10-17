@@ -145,6 +145,47 @@ ul {
   border-color: var(--accent-text);
 }
 
+/* View switch: how many streams share the focus */
+.view-switch {
+  display: flex;
+}
+
+.view-switch button {
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition:
+    color var(--transition),
+    background var(--transition);
+}
+
+.view-switch button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.view-switch button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.view-switch button + button {
+  margin-left: -1px;
+}
+
+.view-switch button:hover {
+  color: var(--accent-text);
+  background: var(--surface-hover);
+}
+
+.view-switch button.is-active {
+  position: relative; /* the accent border above the neighbours' */
+  color: var(--accent-text);
+  border-color: var(--accent-text);
+}
+
 /* Twitch purple — recognizable as the Twitch account at a glance */
 .twitch-login-btn {
   color: var(--twitch);
@@ -691,6 +732,17 @@ ul {
 .player-slot.is-tile:hover {
   border-color: var(--accent-text);
   box-shadow: 0 0 12px var(--accent-dim);
+}
+
+/* ─── Focus Slot ─────────────────────────────────────────────────── */
+/* Several focus streams: a click marks one — volume keys, mute and chat act on it */
+.player-slot.is-focus:not(.is-marked) {
+  cursor: pointer;
+}
+
+.player-slot.is-marked {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -2px; /* inside, so neighbours don't cover it; drawn above the video */
 }
 
 /* ─── Player Label Badge ─────────────────────────────────────────── */

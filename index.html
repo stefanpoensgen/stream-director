@@ -28,7 +28,7 @@
           <button class="footer-btn hidden" id="reset-window">Reset window to Full HD</button>
           <span class="hotkey-hint"
             >&larr;&rarr; cycle &middot; &uarr;&darr; volume &middot; M mute &middot; F last
-            &middot; S sidebar &middot; C chat &middot; F11 fullscreen</span
+            &middot; 1/2/4 view &middot; S sidebar &middot; C chat &middot; F11 fullscreen</span
           >
         </div>
       </aside>
@@ -62,6 +62,11 @@
             <button class="chat-btn" id="chat-btn" title="Open chat for focused channel (C)">
               Chat
             </button>
+            <div class="view-switch" id="view-switch">
+              <button data-view-size="1" title="One stream in focus (1)">1</button>
+              <button data-view-size="2" title="Two streams in focus (2)">2</button>
+              <button data-view-size="4" title="Four streams in focus (4)">4</button>
+            </div>
             <button
               class="twitch-login-btn"
               id="twitch-login"
