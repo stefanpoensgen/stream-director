@@ -10,6 +10,8 @@ const STORAGE_KEY = 'stream-director';
 const DEFAULT_MAX_PLAYERS = 14;
 // How many streams share the focus area: 1 (full), 2 (halves) or 4 (quarters)
 const VIEW_SIZES = [1, 2, 4];
+// Drag & drop payload: the dragged channel (own type, so dropped text or files are ignored)
+const DRAG_TYPE = 'application/x-stream-director-channel';
 const LIVE_CHECK_INTERVAL_MS = 60_000;
 const QUALITY_BADGE_INTERVAL_MS = 2000;
 const RESOLUTION_REFRESH_MS = 1000;
@@ -320,24 +322,31 @@ function toggleLive(name) {
 function setFocus(name) {
   if (state.focus === name) return;
 
-  // Remember previous focus for 'F' recall
-  if (state.focus) state.lastFocus = state.focus;
-
   // Auto-activate if not live
   if (!state.liveSet.has(name)) addLive(name);
 
   joinFocusGroup(name);
-  state.focus = name;
-  touchLru(name);
-
-  followFocusInChat();
+  markFocus(name);
 
   syncPlayers();
   renderSidebar();
   saveState();
 }
 
-/** Puts `name` into the focus area — into a free slot, else in place of the stream focused longest ago. */
+/** Moves the mark to `name`, a member of the focus group. */
+function markFocus(name) {
+  if (state.focus === name) return;
+
+  // Remember previous focus for 'F' recall
+  if (state.focus) state.lastFocus = state.focus;
+
+  state.focus = name;
+  touchLru(name);
+
+  followFocusInChat();
+}
+
+/** Puts `name` into the focus area — into a free slot, else in place of the marked stream. */
 function joinFocusGroup(name) {
   const group = state.focusGroup;
   if (group.includes(name)) return;
@@ -347,9 +356,43 @@ function joinFocusGroup(name) {
     return;
   }
 
-  // LRU: oldest first
-  const oldest = state.lru.find((n) => group.includes(n)) ?? group[0];
-  group[group.indexOf(oldest)] = name;
+  group[group.indexOf(state.focus)] = name;
+}
+
+/**
+ * Drag & drop: `source` takes the place of `target`. Between the focus area and the tiles
+ * the two swap — the stream coming into focus is marked, as on a click. Two focus streams
+ * swap their slots, a tile moves to the other tile's position.
+ */
+function moveStream(source, target) {
+  if (source === target || !state.liveSet.has(source) || !state.liveSet.has(target)) return;
+
+  const group = state.focusGroup;
+  const sourceSlot = group.indexOf(source);
+  const targetSlot = group.indexOf(target);
+
+  if (sourceSlot === -1 && targetSlot === -1) {
+    moveTile(source, target);
+  } else {
+    if (targetSlot !== -1) group[targetSlot] = source;
+    if (sourceSlot !== -1) group[sourceSlot] = target;
+
+    if (sourceSlot === -1) markFocus(source);
+    if (targetSlot === -1) markFocus(target);
+  }
+
+  syncPlayers();
+  renderSidebar();
+  saveState();
+}
+
+/** Tiles follow the channel order: `source` moves to the position of `target`. */
+function moveTile(source, target) {
+  const from = state.channels.findIndex((channel) => channel.name === source);
+  const to = state.channels.findIndex((channel) => channel.name === target);
+
+  const [moved] = state.channels.splice(from, 1);
+  state.channels.splice(to, 0, moved);
 }
 
 /**
@@ -1093,6 +1136,7 @@ function createPlayerSlot(name) {
 
   // Click to focus (setFocus short-circuits if already focused)
   container.addEventListener('click', () => setFocus(name));
+  enableDragAndDrop(container, name);
 
   // Label overlay
   const label = document.createElement('div');
@@ -1134,6 +1178,11 @@ function createPlayerSlot(name) {
   volumeControl.label.className = 'volume-control-label';
   volumeControl.element.append(volumeControl.muteButton, volumeControl.slider, volumeControl.label);
   container.appendChild(volumeControl.element);
+  // Moving the volume slider must not drag the whole slot
+  volumeControl.element.addEventListener('pointerdown', () => {
+    container.draggable = false;
+    window.addEventListener('pointerup', () => (container.draggable = true), { once: true });
+  });
 
   // Quality debug badge (dev mode only)
   let qualityBadge = null;
@@ -1171,6 +1220,36 @@ function createPlayerSlot(name) {
 
   players.set(name, { container, player, resolution, volumeOsd, volumeControl, qualityBadge });
   syncVolumeControls(name);
+}
+
+/** Dropping one slot onto another moves its stream there (see moveStream). */
+function enableDragAndDrop(container, name) {
+  container.draggable = true;
+
+  container.addEventListener('dragstart', (event) => {
+    event.dataTransfer.setData(DRAG_TYPE, name);
+    event.dataTransfer.effectAllowed = 'move';
+    container.classList.add('is-dragging');
+  });
+  container.addEventListener('dragend', () => container.classList.remove('is-dragging'));
+
+  container.addEventListener('dragover', (event) => {
+    const isOtherStream =
+      event.dataTransfer.types.includes(DRAG_TYPE) && !container.classList.contains('is-dragging');
+    if (!isOtherStream) return;
+
+    // Accepting the drop
+    event.preventDefault();
+    container.classList.add('is-drop-target');
+  });
+  container.addEventListener('dragleave', (event) => {
+    if (!container.contains(event.relatedTarget)) container.classList.remove('is-drop-target');
+  });
+  container.addEventListener('drop', (event) => {
+    event.preventDefault();
+    container.classList.remove('is-drop-target');
+    moveStream(event.dataTransfer.getData(DRAG_TYPE), name);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════

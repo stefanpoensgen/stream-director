@@ -745,6 +745,16 @@ ul {
   outline-offset: -2px; /* inside, so neighbours don't cover it; drawn above the video */
 }
 
+/* ─── Drag & Drop ────────────────────────────────────────────────── */
+.player-slot.is-dragging {
+  opacity: 0.5;
+}
+
+.player-slot.is-drop-target {
+  outline: 2px dashed var(--accent-text);
+  outline-offset: -2px;
+}
+
 /* ─── Player Label Badge ─────────────────────────────────────────── */
 .player-label {
   position: absolute;
