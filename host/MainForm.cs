@@ -91,7 +91,8 @@ internal sealed class MainForm : Form
         await _webView.EnsureCoreWebView2Async(environment);
 
         var core = _webView.CoreWebView2;
-        _webView.AllowExternalDrop = false; // a dropped file or link would replace the app page
+        // AllowExternalDrop stays on: switched off, WebView2 accepts no drops at all — not even the
+        // page's own drag & drop. The page rejects dropped files and links itself.
 
         // An app, not a browser: no browser UI that would end up in the captured picture or break the layout.
         // Dev mode keeps context menu and shortcuts (Inspect, F5).

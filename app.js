@@ -1527,6 +1527,15 @@ function bindEvents() {
     hideImportModal();
   });
 
+  // Dropped files or links must not replace the app page — only our own drags are accepted
+  window.addEventListener('dragover', (event) => {
+    if (event.dataTransfer.types.includes(DRAG_TYPE)) return;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'none';
+  });
+  window.addEventListener('drop', (event) => event.preventDefault());
+
   // Global hotkeys
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !dom.importOverlay.classList.contains('hidden')) {
