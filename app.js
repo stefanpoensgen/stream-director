@@ -672,7 +672,7 @@ function createFollowedStatusRow() {
 
   const connectBtn = document.createElement('button');
   connectBtn.className = 'followed-connect';
-  connectBtn.textContent = '\u2665 Show followed channels';
+  connectBtn.textContent = 'Show followed channels';
   connectBtn.addEventListener('click', connectFollows);
   li.append(connectBtn);
   if (followedError) li.append(createErrorLine(followedError));
