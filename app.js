@@ -633,7 +633,7 @@ function createFollowedRow({ login, live }) {
   nameBtn.textContent = login;
   nameBtn.addEventListener('click', () => addFollowed(login, { focus: true }));
 
-  li.append(toggle, nameBtn);
+  li.append(toggle, getListAvatar(login), nameBtn);
   if (live) {
     const liveBadge = document.createElement('span');
     liveBadge.className = 'live-badge';
@@ -1137,13 +1137,7 @@ function createPlayerSlot(name) {
   // Label overlay
   const label = document.createElement('div');
   label.className = 'player-label';
-  // Many channels are easier to recognize by their profile image than by name
-  const avatar = document.createElement('img');
-  avatar.className = 'player-avatar';
-  avatar.src = `/api/avatar/${name}`;
-  avatar.alt = '';
-  avatar.addEventListener('error', () => avatar.remove());
-  label.append(avatar, name);
+  label.append(createAvatar(name, 'player-avatar'), name);
   // Shown with the name while hovering the focus (see updateFocusResolution)
   const resolution = document.createElement('span');
   resolution.className = 'player-resolution';
@@ -1246,6 +1240,32 @@ function enableDragAndDrop(container, name) {
     container.classList.remove('is-drop-target');
     moveStream(event.dataTransfer.getData(DRAG_TYPE), name);
   });
+}
+
+/**
+ * Many channels are easier to recognize by their profile image than by name.
+ * Loaded once visible — the list can hold hundreds of followed channels.
+ */
+function createAvatar(name, className) {
+  const avatar = document.createElement('img');
+  avatar.className = className;
+  avatar.alt = '';
+  // Before src — setting src starts the download right away, even outside the document
+  avatar.loading = 'lazy';
+  avatar.src = `/api/avatar/${name}`;
+  avatar.addEventListener('error', () => avatar.classList.add('is-missing'));
+
+  return avatar;
+}
+
+// Channel name → its avatar in the channel list. Followed rows are rebuilt on every render and
+// WebView2 caches no host responses — reusing the element avoids downloading the image again.
+const listAvatars = new Map();
+
+function getListAvatar(name) {
+  if (!listAvatars.has(name)) listAvatars.set(name, createAvatar(name, 'channel-avatar'));
+
+  return listAvatars.get(name);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1391,7 +1411,7 @@ function createSidebarItem(name) {
   });
 
   // Delete before the badge: appearing on hover, it takes room from the name and the badge stays put
-  li.append(toggle, nameBtn, delBtn, liveBadge);
+  li.append(toggle, getListAvatar(name), nameBtn, delBtn, liveBadge);
 
   // Store refs for fast updates
   li._checkbox = checkbox;

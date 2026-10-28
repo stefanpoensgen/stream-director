@@ -317,6 +317,18 @@ ul {
   background: var(--surface-hover);
 }
 
+.channel-avatar {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+/* Keeps the names aligned */
+.channel-avatar.is-missing {
+  visibility: hidden;
+}
+
 .channel-item.is-focus {
   background: var(--accent-dim);
   border-left-color: var(--accent-text);
@@ -771,6 +783,10 @@ ul {
   margin: -3px 7px -3px -6px;
   border-radius: 50%;
   vertical-align: middle;
+}
+
+.player-avatar.is-missing {
+  display: none;
 }
 
 .player-slot.is-tile .player-label {
