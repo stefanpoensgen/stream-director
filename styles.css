@@ -430,13 +430,6 @@ ul {
 }
 
 /* ─── Followed channels in the list (live, not added yet) ────────── */
-.followed-mark {
-  flex-shrink: 0;
-  margin-right: -4px;
-  font-size: 11px;
-  color: var(--accent-text);
-}
-
 .channel-item.is-followed .channel-name {
   color: var(--text-dim);
 }

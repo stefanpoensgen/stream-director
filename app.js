@@ -608,7 +608,7 @@ function addFollowed(login, { focus }) {
   else toggleLive(login);
 }
 
-/** Followed channel that is not in the own list yet: same row, marked with ♥. */
+/** Followed channel that is not in the own list yet: same row, with a dimmed name. */
 function createFollowedRow({ login, live }) {
   const li = document.createElement('li');
   li.className = 'channel-item is-followed';
@@ -628,16 +628,12 @@ function createFollowedRow({ login, live }) {
   thumb.className = 'toggle-thumb';
   toggle.append(checkbox, track, thumb);
 
-  const mark = document.createElement('span');
-  mark.className = 'followed-mark';
-  mark.textContent = '\u2665';
-
   const nameBtn = document.createElement('button');
   nameBtn.className = 'channel-name';
   nameBtn.textContent = login;
   nameBtn.addEventListener('click', () => addFollowed(login, { focus: true }));
 
-  li.append(toggle, mark, nameBtn);
+  li.append(toggle, nameBtn);
   if (live) {
     const liveBadge = document.createElement('span');
     liveBadge.className = 'live-badge';
@@ -1335,7 +1331,7 @@ function renderSidebar() {
     li._checkbox.checked = isLive;
     syncVolumeControls(row.name);
     li._liveBadge.classList.toggle('hidden', !row.online);
-    // Removing a followed channel would only bring it back as a ♥ row (losing its volume)
+    // Removing a followed channel would only bring it back as a followed row (losing its volume)
     li._deleteButton.classList.toggle('is-unavailable', followedNames.has(row.name));
 
     // Append in sorted order (moves existing nodes without recreating)
