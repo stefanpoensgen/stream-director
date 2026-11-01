@@ -57,7 +57,7 @@ Tips for a clean picture:
 | Key       | Action                                    |
 | --------- | ----------------------------------------- |
 | `←` / `→` | Switch focus to the previous/next channel |
-| `↑` / `↓` | Volume of the focus ±5 %                  |
+| `↑` / `↓` | Volume of the focus ±1 % (Shift: ±5 %)    |
 | `M`       | Mute/unmute the focus                     |
 | `F`       | Back to the previously focused channel    |
 | `1` – `4` | How many streams share the focus          |

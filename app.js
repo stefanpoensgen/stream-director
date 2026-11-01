@@ -28,8 +28,8 @@ const VIEWER_TILE_MIN_WIDTH_PX = 240;
 // Viewer layout: focus pictures this close in size count as equal — then the bigger tiles win
 const FOCUS_SIZE_TOLERANCE_PX = 1;
 const DEFAULT_VOLUME = 1;
-// ↑/↓ move the volume this much; the slider is finer (whole percent)
-const VOLUME_HOTKEY_STEP_PERCENT = 5;
+// ↑/↓ move the volume by one percent, with Shift by this much
+const VOLUME_COARSE_STEP_PERCENT = 5;
 const VOLUME_OSD_DURATION_MS = 1200;
 const SPEAKER_ICON = '\u{1F50A}';
 const MUTED_ICON = '\u{1F507}';
@@ -809,14 +809,12 @@ function applyChannelAudio(name) {
   if (name === state.focus) showVolumeOsd(entry, formatVolume(name));
 }
 
-/** Adjust the focused channel's volume (direction: +1 or -1). */
-function stepFocusVolume(direction) {
+/** Adjust the focused channel's volume (direction: +1 or -1) by one percent, or by the coarse step. */
+function stepFocusVolume(direction, coarse) {
   if (!state.focus) return;
 
-  setChannelVolume(
-    state.focus,
-    getChannelVolume(state.focus) + (direction * VOLUME_HOTKEY_STEP_PERCENT) / 100,
-  );
+  const stepPercent = coarse ? VOLUME_COARSE_STEP_PERCENT : 1;
+  setChannelVolume(state.focus, getChannelVolume(state.focus) + (direction * stepPercent) / 100);
 }
 
 /** Range input 0–100 % bound to a channel's volume (focus overlay). */
@@ -1742,11 +1740,11 @@ function handleHotkey(e) {
       break;
     case 'ArrowUp':
       e.preventDefault();
-      stepFocusVolume(1);
+      stepFocusVolume(1, e.shiftKey);
       break;
     case 'ArrowDown':
       e.preventDefault();
-      stepFocusVolume(-1);
+      stepFocusVolume(-1, e.shiftKey);
       break;
     case 'c':
     case 'C':
