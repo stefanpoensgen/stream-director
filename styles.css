@@ -751,7 +751,9 @@ ul {
   cursor: pointer;
 }
 
-.player-slot.is-marked {
+/* The mark outline only while the mouse is over the streams or right after the mark moved */
+.content:hover .player-slot.is-marked,
+.player-slot.is-marked.is-mark-flash {
   outline: 2px solid var(--marker);
   outline-offset: -2px; /* inside, so neighbours don't cover it; drawn above the video */
 }

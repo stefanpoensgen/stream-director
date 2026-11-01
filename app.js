@@ -31,6 +31,8 @@ const DEFAULT_VOLUME = 1;
 // ↑/↓ move the volume by one percent, with Shift by this much
 const VOLUME_COARSE_STEP_PERCENT = 5;
 const VOLUME_OSD_DURATION_MS = 1200;
+// The mark outline shows this long after the mark moved (and while the mouse is over the streams)
+const MARK_FLASH_DURATION_MS = 1200;
 const SPEAKER_ICON = '\u{1F50A}';
 const MUTED_ICON = '\u{1F507}';
 const TWITCH_LOGIN_URL = 'https://www.twitch.tv/login';
@@ -1253,9 +1255,12 @@ function syncPlayers() {
   const hasSeveralFocus = state.focusGroup.length > 1;
   for (const [name, entry] of players) {
     const isFocus = state.focusGroup.includes(name);
+    const isMarked = hasSeveralFocus && name === state.focus;
+    if (isMarked && !entry.container.classList.contains('is-marked')) flashMark(entry);
+
     entry.container.classList.toggle('is-focus', isFocus);
     entry.container.classList.toggle('is-tile', !isFocus);
-    entry.container.classList.toggle('is-marked', hasSeveralFocus && name === state.focus);
+    entry.container.classList.toggle('is-marked', isMarked);
     entry.player.setFocused(isFocus);
   }
 
@@ -1269,6 +1274,18 @@ function syncPlayers() {
 
   // 6. Toggle empty state
   dom.focusEmpty.classList.toggle('hidden', players.size > 0);
+}
+
+/** Shows the mark outline briefly — a permanent frame around one stream was found distracting. */
+function flashMark(entry) {
+  const { container } = entry;
+  container.classList.add('is-mark-flash');
+
+  clearTimeout(entry.markFlashTimer);
+  entry.markFlashTimer = setTimeout(
+    () => container.classList.remove('is-mark-flash'),
+    MARK_FLASH_DURATION_MS,
+  );
 }
 
 function createPlayerSlot(name) {
