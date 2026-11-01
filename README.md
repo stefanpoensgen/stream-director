@@ -69,7 +69,7 @@ Tips for a clean picture:
 
 Buttons in the bottom-left corner: **Menu** / **Hide menu** (channel list), **Chat** (chat of the focus in a popup), **1** – **4** (how many streams share the focus, all of them audible), **OBS layout** / **Viewer layout** and **Twitch login** / **Twitch logout**.
 
-Hovering the focus shows its name with the resolution actually on screen (e.g. `1080p60`), its volume slider and mute button.
+Hovering the focus shows its name with the resolution actually on screen (e.g. `1080p60`) and its viewers, its volume slider and mute button.
 
 Once the mouse has rested for 3 seconds the corner with the logo and buttons fades out (in the viewer layout the tile names too); moving the mouse brings them back.
 

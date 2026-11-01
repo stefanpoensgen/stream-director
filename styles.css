@@ -871,12 +871,12 @@ ul {
   font-variant-numeric: tabular-nums;
 }
 
-.player-resolution {
+.player-details {
   font-weight: 600;
   color: var(--text-dim);
 }
 
-.player-slot.is-tile .player-resolution {
+.player-slot.is-tile .player-details {
   display: none;
 }
 

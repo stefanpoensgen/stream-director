@@ -59,7 +59,7 @@ const state = {
 // One audio relay for all players, created in init() (null outside the WebView2 host)
 let audioRelay = null;
 
-// Maps channel name → { container, player, resolution, volumeOsd, volumeControl, qualityBadge: HTMLElement|null }
+// Maps channel name → { container, player, details, volumeOsd, volumeControl, qualityBadge: HTMLElement|null }
 const players = new Map();
 
 // Tracks which channels are actually streaming
@@ -120,7 +120,7 @@ function init() {
   refreshFollowedLive();
   setInterval(refreshFollowedLive, LIVE_CHECK_INTERVAL_MS);
 
-  setInterval(updateFocusResolution, RESOLUTION_REFRESH_MS);
+  setInterval(updateFocusDetails, RESOLUTION_REFRESH_MS);
   if (IS_DEV) {
     setInterval(updateQualityBadges, QUALITY_BADGE_INTERVAL_MS);
   }
@@ -1323,10 +1323,10 @@ function createPlayerSlot(name) {
   const label = document.createElement('div');
   label.className = 'player-label';
   label.append(createAvatar(name, 'player-avatar'), name);
-  // Shown with the name while hovering the focus (see updateFocusResolution)
-  const resolution = document.createElement('span');
-  resolution.className = 'player-resolution';
-  label.appendChild(resolution);
+  // Resolution and viewers, shown with the name while hovering the focus (see updateFocusDetails)
+  const details = document.createElement('span');
+  details.className = 'player-details';
+  label.appendChild(details);
   container.appendChild(label);
 
   // Offline badge
@@ -1393,7 +1393,7 @@ function createPlayerSlot(name) {
 
   player.setVolume(getAudibleVolume(name));
 
-  players.set(name, { container, player, resolution, volumeOsd, volumeControl, qualityBadge });
+  players.set(name, { container, player, details, volumeOsd, volumeControl, qualityBadge });
   syncVolumeControls(name);
 }
 
@@ -1457,14 +1457,24 @@ function getListAvatar(name) {
 // Resolution on the focus label + quality debug badge (dev mode)
 // ═══════════════════════════════════════════════════════════════════
 
-/** The focus label shows the rendition on screen — it changes from 360p to source after a switch. */
-function updateFocusResolution() {
+/**
+ * The focus label shows the rendition on screen (it changes from 360p to source after a
+ * switch) and the viewers from the last live check.
+ */
+function updateFocusDetails() {
   for (const name of state.focusGroup) {
     const entry = players.get(name);
     if (!entry) continue;
 
-    const rendition = entry.player.resolutionLabel();
-    entry.resolution.textContent = rendition ? ` · ${rendition}` : '';
+    const viewers = findLiveStream(name)?.viewers;
+    const parts = [
+      entry.player.resolutionLabel(),
+      viewers != null && `${formatViewers(viewers)} viewers`,
+    ];
+    entry.details.textContent = parts
+      .filter(Boolean)
+      .map((part) => ` · ${part}`)
+      .join('');
   }
 }
 
