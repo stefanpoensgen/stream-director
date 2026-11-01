@@ -28,7 +28,8 @@ const VIEWER_TILE_MIN_WIDTH_PX = 240;
 // Viewer layout: focus pictures this close in size count as equal — then the bigger tiles win
 const FOCUS_SIZE_TOLERANCE_PX = 1;
 const DEFAULT_VOLUME = 1;
-const VOLUME_STEP_PERCENT = 5;
+// ↑/↓ move the volume this much; the slider is finer (whole percent)
+const VOLUME_HOTKEY_STEP_PERCENT = 5;
 const VOLUME_OSD_DURATION_MS = 1200;
 const SPEAKER_ICON = '\u{1F50A}';
 const MUTED_ICON = '\u{1F507}';
@@ -773,8 +774,8 @@ function setChannelVolume(name, volume) {
   const channel = state.channels.find((c) => c.name === name);
   if (!channel) return;
 
-  // Snap to whole-percent steps — no float drift from repeated ↑/↓
-  const percent = Math.round((volume * 100) / VOLUME_STEP_PERCENT) * VOLUME_STEP_PERCENT;
+  // Snap to whole percent — no float drift from repeated ↑/↓
+  const percent = Math.round(volume * 100);
   channel.volume = Math.min(100, Math.max(0, percent)) / 100;
   channel.muted = false; // changing the volume unmutes, as in Windows or YouTube
 
@@ -814,7 +815,7 @@ function stepFocusVolume(direction) {
 
   setChannelVolume(
     state.focus,
-    getChannelVolume(state.focus) + (direction * VOLUME_STEP_PERCENT) / 100,
+    getChannelVolume(state.focus) + (direction * VOLUME_HOTKEY_STEP_PERCENT) / 100,
   );
 }
 
@@ -825,7 +826,7 @@ function createVolumeSlider(name) {
   slider.className = 'volume-control-slider';
   slider.min = '0';
   slider.max = '100';
-  slider.step = String(VOLUME_STEP_PERCENT);
+  slider.step = '1';
   slider.addEventListener('input', () => setChannelVolume(name, slider.value / 100));
 
   // Hand the keyboard back to the hotkeys (←/→ would otherwise move the slider)
