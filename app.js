@@ -8,8 +8,11 @@ import { createPlayer } from './player.js';
 // ─── Configuration ──────────────────────────────────────────────────
 const STORAGE_KEY = 'stream-director';
 const DEFAULT_MAX_PLAYERS = 14;
-// How many streams share the focus area: 1 (full), 2 (halves) or 4 (quarters)
-const VIEW_SIZES = [1, 2, 4];
+// How many streams share the focus area (1 to 4)
+const VIEW_SIZES = [1, 2, 3, 4];
+// 'obs' keeps the L shape a 1920×1080 OBS scene is made for, 'viewer' fits the window
+const LAYOUT_MODES = ['obs', 'viewer'];
+const DEFAULT_LAYOUT_MODE = 'obs';
 // Drag & drop payload: the dragged channel (own type, so dropped text or files are ignored)
 const DRAG_TYPE = 'application/x-stream-director-channel';
 const LIVE_CHECK_INTERVAL_MS = 60_000;
@@ -20,6 +23,10 @@ const RESET_WINDOW_MESSAGE = 'reset-window-size';
 const WIDE_ASPECT_RATIO = 2.1;
 const VIDEO_ASPECT_RATIO = 16 / 9;
 const GRID_GAP_PX = 4;
+// Viewer layout: the tile strip is never narrower than the L shape's tiles
+const VIEWER_TILE_MIN_WIDTH_PX = 240;
+// Viewer layout: focus pictures this close in size count as equal — then the bigger tiles win
+const FOCUS_SIZE_TOLERANCE_PX = 1;
 const DEFAULT_VOLUME = 1;
 const VOLUME_STEP_PERCENT = 5;
 const VOLUME_OSD_DURATION_MS = 1200;
@@ -40,6 +47,7 @@ const state = {
   lru: [], // LRU tracking — most recently used at end
   lastFocus: null, // previous focus for 'F' hotkey recall
   sidebarCollapsed: false, // sidebar visibility
+  layoutMode: DEFAULT_LAYOUT_MODE, // one of LAYOUT_MODES
 };
 
 // ─── Player Registry ────────────────────────────────────────────────
@@ -70,6 +78,7 @@ function cacheDom() {
   dom.addChannelInput = document.getElementById('add-channel-input');
   dom.twitchLogin = document.getElementById('twitch-login');
   dom.branding = document.getElementById('branding');
+  dom.layoutToggle = document.getElementById('layout-toggle');
   dom.chatBtn = document.getElementById('chat-btn');
   dom.importBtn = document.getElementById('import-btn');
   dom.resetWindow = document.getElementById('reset-window');
@@ -90,6 +99,7 @@ function init() {
   restoreState();
   applySidebarState();
   syncViewSwitch();
+  syncLayoutToggle();
 
   renderSidebar();
   syncPlayers();
@@ -175,6 +185,7 @@ function saveState() {
           lru: state.lru,
           lastFocus: state.lastFocus,
           sidebarCollapsed: state.sidebarCollapsed,
+          layoutMode: state.layoutMode,
         }),
       );
     } catch {
@@ -224,6 +235,9 @@ function restoreState() {
     state.focusGroup = restoreFocusGroup(knownNames(data.focusGroup));
     state.lastFocus = valid.has(data.lastFocus) ? data.lastFocus : null;
     state.sidebarCollapsed = data.sidebarCollapsed === true;
+    state.layoutMode = LAYOUT_MODES.includes(data.layoutMode)
+      ? data.layoutMode
+      : DEFAULT_LAYOUT_MODE;
 
     // Trim live set to max
     while (state.liveSet.size > DEFAULT_MAX_PLAYERS) {
@@ -396,7 +410,7 @@ function moveTile(source, target) {
 }
 
 /**
- * Switches between 1, 2 and 4 focus streams. The marked focus stays, the most recently
+ * Switches between 1 to 4 focus streams. The marked focus stays, the most recently
  * used streams fill the other slots; streams that stay in focus keep their slot.
  */
 function setViewSize(size) {
@@ -874,12 +888,33 @@ function applySidebarState() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Layout Mode
+// ═══════════════════════════════════════════════════════════════════
+
+function toggleLayoutMode() {
+  state.layoutMode = state.layoutMode === 'obs' ? 'viewer' : 'obs';
+  syncLayoutToggle();
+  updateGridLayout();
+  saveState();
+}
+
+function syncLayoutToggle() {
+  const isObs = state.layoutMode === 'obs';
+
+  // The button names the current layout; the title says what a click switches to
+  dom.layoutToggle.textContent = isObs ? 'OBS layout' : 'Viewer layout';
+  dom.layoutToggle.title = isObs
+    ? 'L shape for a 1920×1080 OBS scene — switch to a layout that fits the window (L)'
+    : 'Fits the window — switch to the L shape for a 1920×1080 OBS scene (L)';
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // Player Lifecycle
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Update CSS Grid layout. Wide content (see WIDE_ASPECT_RATIO) uses layoutWide();
- * everything else the L-shape arrangement made for 1920×1080 OBS capture:
+ * Update CSS Grid layout. Wide content (see WIDE_ASPECT_RATIO) uses layoutWide(), viewer
+ * mode layoutViewer(); everything else the L-shape arrangement made for 1920×1080 OBS capture:
  *
  * - Left column:  240px wide, full height, tiles stacked vertically
  * - Focus:        remaining width × 945px (16:9), top-right area
@@ -903,6 +938,8 @@ function updateGridLayout() {
     s.height = '';
     s.justifySelf = '';
     s.alignSelf = '';
+    s.left = '';
+    s.top = '';
   }
 
   dom.content.style.gridAutoRows = '';
@@ -951,6 +988,11 @@ function placeGrid(focusNames, tileNames) {
     placeFocusArea(focusNames, '1 / -1', '1');
     dom.branding.style.gridRow = '2';
     dom.branding.style.gridColumn = '1';
+    return;
+  }
+
+  if (state.layoutMode === 'viewer') {
+    layoutViewer(focusNames, tileNames);
     return;
   }
 
@@ -1043,6 +1085,89 @@ function layoutWide(focusNames, tileNames) {
   dom.branding.style.gridRow = String(rows);
 }
 
+/**
+ * Viewer mode: the focus gets the largest 16:9 picture the window allows; the tiles and the
+ * branding (their last cell, bottom-left) form a strip below or left of it — whichever leaves
+ * the focus bigger. On a portrait window that is a strip of big tiles below a full-width focus.
+ */
+function layoutViewer(focusNames, tileNames) {
+  const { clientWidth: width, clientHeight: height } = dom.content;
+  const strip = chooseViewerStrip(width, height, tileNames.length + 1, focusNames.length);
+  const { columns, rows } = strip;
+
+  if (strip.side === 'bottom') {
+    dom.content.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+    dom.content.style.gridTemplateRows = `1fr repeat(${rows}, ${strip.tileHeight}px)`;
+    placeFocusArea(focusNames, '1 / -1', '1');
+  } else {
+    dom.content.style.gridTemplateColumns = `repeat(${columns}, ${strip.tileWidth}px) 1fr`;
+    dom.content.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    placeFocusArea(focusNames, `${columns + 1}`, '1 / -1');
+  }
+
+  // Strip cells in reading order, the bottom-left one kept for the branding
+  const firstRow = strip.side === 'bottom' ? 2 : 1;
+  const brandingRow = firstRow + rows - 1;
+  const cells = [];
+  for (let row = firstRow; row <= brandingRow; row++) {
+    for (let column = 1; column <= columns; column++) {
+      if (row === brandingRow && column === 1) continue;
+      cells.push({ row, column });
+    }
+  }
+
+  tileNames.forEach((name, index) => {
+    const style = players.get(name)?.container.style;
+    if (!style) return;
+
+    style.gridRow = String(cells[index].row);
+    style.gridColumn = String(cells[index].column);
+  });
+
+  dom.branding.style.gridRow = String(brandingRow);
+  dom.branding.style.gridColumn = '1';
+}
+
+/**
+ * Where the tile strip goes and how its `cellCount` 16:9 cells are arranged: below the focus
+ * (full-width rows) or left of it (full-height columns), tiles never narrower than
+ * VIEWER_TILE_MIN_WIDTH_PX. The arrangement whose remaining area shows the `focusCount` focus
+ * streams widest wins; among equal ones the biggest tiles (a portrait window has height to
+ * spare below the focus).
+ */
+function chooseViewerStrip(width, height, cellCount, focusCount) {
+  const candidates = [];
+  const fitting = (extent, cellExtent) =>
+    Math.max(1, Math.floor((extent + GRID_GAP_PX) / (cellExtent + GRID_GAP_PX)));
+  const pictureWidth = (areaWidth, areaHeight) =>
+    focusPictureWidth(areaWidth, areaHeight, chooseFocusSplit(areaWidth, areaHeight, focusCount));
+
+  const maxColumns = fitting(width, VIEWER_TILE_MIN_WIDTH_PX);
+  for (let columns = 1; columns <= maxColumns; columns++) {
+    const tileWidth = Math.floor((width - (columns - 1) * GRID_GAP_PX) / columns);
+    const tileHeight = Math.floor(tileWidth / VIDEO_ASPECT_RATIO);
+    const rows = Math.ceil(cellCount / columns);
+    const focusHeight = height - rows * (tileHeight + GRID_GAP_PX);
+    const focusWidth = pictureWidth(width, focusHeight);
+    candidates.push({ side: 'bottom', columns, rows, tileWidth, tileHeight, focusWidth });
+  }
+
+  const maxRows = fitting(height, VIEWER_TILE_MIN_WIDTH_PX / VIDEO_ASPECT_RATIO);
+  for (let rows = 1; rows <= maxRows; rows++) {
+    const tileHeight = Math.floor((height - (rows - 1) * GRID_GAP_PX) / rows);
+    const tileWidth = Math.floor(tileHeight * VIDEO_ASPECT_RATIO);
+    const columns = Math.ceil(cellCount / rows);
+    const focusWidth = pictureWidth(width - columns * (tileWidth + GRID_GAP_PX), height);
+    candidates.push({ side: 'left', columns, rows, tileWidth, tileHeight, focusWidth });
+  }
+
+  const widestFocus = Math.max(...candidates.map((candidate) => candidate.focusWidth));
+
+  return candidates
+    .filter((candidate) => candidate.focusWidth >= widestFocus - FOCUS_SIZE_TOLERANCE_PX)
+    .reduce((best, candidate) => (candidate.tileWidth > best.tileWidth ? candidate : best));
+}
+
 function placeFocusArea(focusNames, gridColumn, gridRow) {
   for (const name of focusNames) {
     const style = players.get(name).container.style;
@@ -1052,29 +1177,51 @@ function placeFocusArea(focusNames, gridColumn, gridRow) {
 }
 
 /**
- * Several focus streams share the focus grid area: sized in percent of it (no extra grid
- * lines, so the tile layout stays as it is). Two sit side by side or stacked, whichever
- * shows larger 16:9 pictures; three or four take the quarters.
+ * Several focus streams share the focus grid area: sized in percent of it and offset from
+ * its top-left corner (no extra grid lines, so the tile layout stays as it is). They sit in
+ * one row, one column or two by two — whichever shows the largest 16:9 pictures.
  */
 function splitFocusArea(focusNames) {
   if (focusNames.length < 2) return;
 
   // Still unsized, so the first one fills the whole area
   const area = players.get(focusNames[0]).container.getBoundingClientRect();
-  const sideBySideWidth = Math.min(area.width / 2, area.height * VIDEO_ASPECT_RATIO);
-  const stackedWidth = Math.min(area.width, (area.height / 2) * VIDEO_ASPECT_RATIO);
-
-  const columns = focusNames.length > 2 || sideBySideWidth >= stackedWidth ? 2 : 1;
-  const rows = focusNames.length > 2 ? 2 : 3 - columns;
-  const share = (count) => (count === 1 ? '100%' : `calc(50% - ${GRID_GAP_PX / 2}px)`);
+  const { columns, rows } = chooseFocusSplit(area.width, area.height, focusNames.length);
+  const share = (count) => `calc((100% - ${(count - 1) * GRID_GAP_PX}px) / ${count})`;
+  const offset = (count, index) => `calc(${index} * (100% + ${GRID_GAP_PX}px) / ${count})`;
 
   focusNames.forEach((name, index) => {
     const style = players.get(name).container.style;
     style.width = share(columns);
     style.height = share(rows);
-    style.justifySelf = index % columns === 0 ? 'start' : 'end';
-    style.alignSelf = Math.floor(index / columns) === 0 ? 'start' : 'end';
+    style.justifySelf = 'start';
+    style.alignSelf = 'start';
+    style.left = offset(columns, index % columns);
+    style.top = offset(rows, Math.floor(index / columns));
   });
+}
+
+/** Columns × rows for `count` focus streams in an area: the arrangement with the widest 16:9 pictures. */
+function chooseFocusSplit(width, height, count) {
+  const options = [
+    { columns: count, rows: 1 },
+    { columns: 1, rows: count },
+  ];
+  if (count > 2) options.push({ columns: 2, rows: 2 });
+
+  return options.reduce((best, option) =>
+    focusPictureWidth(width, height, option) > focusPictureWidth(width, height, best)
+      ? option
+      : best,
+  );
+}
+
+/** Width of each 16:9 picture when the area is split into `columns` × `rows` focus streams. */
+function focusPictureWidth(width, height, { columns, rows }) {
+  return Math.min(
+    (width - (columns - 1) * GRID_GAP_PX) / columns,
+    ((height - (rows - 1) * GRID_GAP_PX) / rows) * VIDEO_ASPECT_RATIO,
+  );
 }
 
 /**
@@ -1519,6 +1666,7 @@ function bindEvents() {
   dom.sidebarToggle.addEventListener('click', toggleSidebar);
   dom.twitchLogin.addEventListener('click', toggleLogin);
   dom.chatBtn.addEventListener('click', openChat);
+  dom.layoutToggle.addEventListener('click', toggleLayoutMode);
   dom.viewSwitch.addEventListener('click', (event) => {
     const size = Number(event.target.closest('[data-view-size]')?.dataset.viewSize);
     if (VIEW_SIZES.includes(size)) setViewSize(size);
@@ -1604,6 +1752,11 @@ function handleHotkey(e) {
       e.preventDefault();
       openChat();
       break;
+    case 'l':
+    case 'L':
+      e.preventDefault();
+      toggleLayoutMode();
+      break;
     case 'm':
     case 'M':
       e.preventDefault();
@@ -1611,6 +1764,7 @@ function handleHotkey(e) {
       break;
     case '1':
     case '2':
+    case '3':
     case '4':
       e.preventDefault();
       setViewSize(Number(e.key));

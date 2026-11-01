@@ -11,7 +11,7 @@ StreamDirector shows up to 14 Twitch channels in one 1920×1080 window: one larg
 
 ## Features
 
-- **Multiview** — up to 14 streams in an L-shaped layout made for a 1920×1080 OBS scene
+- **Multiview** — up to 14 streams, in an L-shaped layout made for a 1920×1080 OBS scene or in a layout that fits your window (also portrait)
 - **Seamless focus switch** — the new focus becomes sharp within ~2 seconds, without picture or sound gaps
 - **Efficient** — tiles play in 360p, only the focus in source quality; no heavy Twitch embeds
 - **Per-channel volume** — streamers differ in loudness; each channel remembers its own volume
@@ -60,12 +60,14 @@ Tips for a clean picture:
 | `↑` / `↓` | Volume of the focus ±5 %                  |
 | `M`       | Mute/unmute the focus                     |
 | `F`       | Back to the previously focused channel    |
+| `1` – `4` | How many streams share the focus          |
+| `L`       | Switch between the OBS and viewer layout  |
 | `S`       | Show/hide the sidebar                     |
 | `C`       | Open the chat of the focus                |
 | `F11`     | Fullscreen on/off                         |
 | `Escape`  | Close the import dialog                   |
 
-Buttons in the bottom-left corner: **Menu** / **Hide menu** (channel list), **Chat** (chat of the focus in a popup) and **Twitch login** / **Twitch logout**.
+Buttons in the bottom-left corner: **Menu** / **Hide menu** (channel list), **Chat** (chat of the focus in a popup), **1** – **4** (how many streams share the focus, all of them audible), **OBS layout** / **Viewer layout** and **Twitch login** / **Twitch logout**.
 
 Hovering the focus shows its name with the resolution actually on screen (e.g. `1080p60`), its volume slider and mute button.
 
@@ -73,12 +75,13 @@ Hovering the focus shows its name with the resolution actually on screen (e.g. `
 
 ## Layout
 
-The layout follows the shape of the window:
+**OBS layout** (default) is made for capturing: an L shape — up to 7 tiles in the left column, the focus top-right, further tiles in the bottom row, logo and buttons bottom-left. The bottom-left corner stays free for a facecam. On a 1920×1080 window the focus is exactly 1680×945.
 
-- **16:9 (e.g. 1920×1080 for OBS):** an L shape — up to 7 tiles in the left column, the focus top-right, further tiles in the bottom row, logo and buttons bottom-left.
-- **Ultrawide (wider than about 2.1:1, e.g. 3440×1440 in fullscreen):** the focus in the middle at full height, tiles alternating left and right of it, logo and buttons at the bottom of the left column.
+**Viewer layout** (`L`) is for watching on your own screen: the focus gets the largest 16:9 picture the window allows, the tiles form a strip below or left of it, whichever leaves the focus bigger. On a portrait monitor that is a full-width focus with big tiles below it; with 2 or 3 streams in focus they stack on top of each other.
 
-The layout switches by itself when the window size changes (F11, sidebar, resizing); players keep running.
+**Ultrawide** windows (wider than about 2.1:1, e.g. 3440×1440 in fullscreen) use the same layout in both modes: the focus in the middle at full height, tiles alternating left and right of it, logo and buttons at the bottom of the left column.
+
+With several streams in focus they sit in a row, a column or two by two, whichever shows them largest. The layout follows the window size (F11, sidebar, resizing); players keep running.
 
 At most 14 streams play at the same time. Switching on one more stops the one you used longest ago.
 

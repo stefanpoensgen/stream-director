@@ -121,9 +121,10 @@ ul {
   color: var(--text);
 }
 
-/* ─── Branding Buttons (Menu + Chat + Login) ─────────────────────── */
+/* ─── Branding Buttons (Menu + Chat + Layout + Login) ────────────── */
 .sidebar-toggle,
 .chat-btn,
+.layout-toggle,
 .twitch-login-btn {
   padding: 4px 12px;
   font-size: 12px;
@@ -139,7 +140,8 @@ ul {
 }
 
 .sidebar-toggle:hover,
-.chat-btn:hover {
+.chat-btn:hover,
+.layout-toggle:hover {
   color: var(--accent-text);
   background: var(--surface-hover);
 }
