@@ -128,7 +128,7 @@ index.html, app.js       Frontend: state, layout, players, volume, hotkeys
 player.js                HLS player per channel (360p tile / source focus)
 audio-relay.js           Routes player audio via Web Audio to the host
 audio-tap.js             AudioWorklet that hands out 10 ms PCM chunks
-styles.css               Dark theme, CSS grid layout
+styles.css               Dark theme (OLED-friendly: true black, dim static chrome), CSS grid layout
 vendor/hls.light.mjs     Vendored hls.js
 ```
 

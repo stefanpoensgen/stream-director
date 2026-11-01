@@ -1,21 +1,25 @@
-/* ─── Design Tokens ──────────────────────────────────────────────── */
+/* ─── Design Tokens ──────────────────────────────────────────────── *
+ * OLED-friendly: the app stays on screen for hours, so everything that sits at a fixed
+ * spot (sidebar chrome, borders, markers, badges, tile labels) is kept dim to avoid
+ * burn-in. Transient states (hover, focus ring, OSD) may be brighter.                */
 :root {
-  --bg: #0a0a0f;
-  --surface: #131319;
+  --bg: #000; /* true black: OLED pixels stay off */
+  --surface: #0d0d10;
   --surface-hover: #1a1a24;
-  --border: #4b6f76; /* control outlines: 3.6:1 on --bg */
-  --tile-border: #1a3a3f; /* video tiles: part of the captured picture, kept subtle */
-  --accent: #2d7987; /* fill behind white text: 5.0:1 */
-  --accent-hover: #236370; /* darker on hover so white text stays readable: 6.8:1 */
-  --accent-text: #5ec4d3; /* accent text, lines and focus ring on dark: ≥ 7.9:1 */
+  --border: #3a4c53; /* control outlines, dimmed: 2.3:1 on --bg */
+  --tile-border: #12262a; /* video tiles: part of the captured picture, kept subtle */
+  --accent: #1f5b65; /* fill behind light text: 5.2:1 */
+  --accent-hover: #174750; /* darker on hover so light text stays readable: 6.9:1 */
+  --accent-text: #5ec4d3; /* transient accent: hover text and focus ring: ≥ 10:1 */
+  --marker: #3a8d9b; /* persistent markers (marked stream, active view, focus row): half the luminance of --accent-text, 5.5:1 */
   --accent-dim: rgba(11, 52, 58, 0.5);
-  --text: #e8e8f0;
+  --text: #d4d4dc; /* off-white instead of pure white: 14.3:1 */
   --text-dim: #a3a3ba; /* secondary text: ≥ 7:1 */
-  --toggle-off: #6a6a82; /* 3.5:1 on --surface */
-  --green: #00e676;
+  --toggle-off: #5c5c70; /* 3.0:1 on --surface */
+  --green: #19945a; /* live toggle, static per live channel: 2.6× dimmer than #00e676 */
   --red: #ff5252; /* red text on dark: 5.8:1 */
-  --red-strong: #c62828; /* fill behind white text: 5.6:1 */
-  --twitch: #bf94ff; /* Twitch purple, light enough for dark backgrounds: 8.3:1 on --bg */
+  --red-strong: #8e1c1c; /* fill behind light text: 6.1:1 */
+  --twitch: #9b6fe0; /* Twitch purple, dimmed: 5.7:1 on --bg */
   --twitch-dim: rgba(145, 70, 255, 0.35);
   --sidebar-w: 260px;
   --radius: 6px;
@@ -80,7 +84,7 @@ ul {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: var(--surface);
+  background: var(--bg); /* true black like the grid: the corner never changes */
   border-radius: var(--radius);
   user-select: none;
   /* grid-row / grid-column set by JS */
@@ -90,7 +94,7 @@ ul {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--text);
+  color: var(--text-dim); /* always on screen at the same spot */
 }
 
 .branding-buttons {
@@ -141,8 +145,8 @@ ul {
 }
 
 .sidebar-toggle.is-active {
-  color: var(--accent-text);
-  border-color: var(--accent-text);
+  color: var(--marker);
+  border-color: var(--marker);
 }
 
 /* View switch: how many streams share the focus */
@@ -182,8 +186,8 @@ ul {
 
 .view-switch button.is-active {
   position: relative; /* the accent border above the neighbours' */
-  color: var(--accent-text);
-  border-color: var(--accent-text);
+  color: var(--marker);
+  border-color: var(--marker);
 }
 
 /* Twitch purple — recognizable as the Twitch account at a glance */
@@ -226,7 +230,7 @@ ul {
 }
 
 .logo-accent {
-  color: var(--accent-text);
+  color: var(--marker);
 }
 
 /* Add channel form */
@@ -262,7 +266,7 @@ ul {
   align-items: center;
   justify-content: center;
   background: var(--accent);
-  color: #fff;
+  color: var(--text);
   font-size: 18px;
   font-weight: 700;
   border-radius: var(--radius);
@@ -331,7 +335,7 @@ ul {
 
 .channel-item.is-focus {
   background: var(--accent-dim);
-  border-left-color: var(--accent-text);
+  border-left-color: var(--marker);
 }
 
 /* Live toggle switch */
@@ -369,7 +373,7 @@ ul {
   left: 2px;
   width: 14px;
   height: 14px;
-  background: #fff;
+  background: var(--text);
   border-radius: 50%;
   transition: transform var(--transition);
   pointer-events: none;
@@ -396,7 +400,7 @@ ul {
   color: var(--accent-text);
 }
 .channel-item.is-focus .channel-name {
-  color: var(--accent-text);
+  color: var(--marker);
   font-weight: 600;
 }
 
@@ -407,7 +411,7 @@ ul {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  color: #fff;
+  color: var(--text);
   background: var(--red-strong);
   border-radius: 3px;
 }
@@ -650,7 +654,7 @@ ul {
   padding: 6px 14px;
   font-size: 12px;
   font-weight: 600;
-  color: #fff;
+  color: var(--text);
   background: var(--accent);
   border-radius: var(--radius);
   transition: background var(--transition);
@@ -714,7 +718,7 @@ ul {
   position: relative;
   border-radius: var(--radius);
   overflow: hidden;
-  background: #111118;
+  background: var(--bg);
   transition:
     border-color var(--transition),
     box-shadow var(--transition);
@@ -746,7 +750,7 @@ ul {
 }
 
 .player-slot.is-marked {
-  outline: 2px solid var(--accent-text);
+  outline: 2px solid var(--marker);
   outline-offset: -2px; /* inside, so neighbours don't cover it; drawn above the video */
 }
 
@@ -791,6 +795,7 @@ ul {
 
 .player-slot.is-tile .player-label {
   opacity: 1;
+  color: var(--text-dim); /* always visible at the same spot */
 }
 
 .player-slot.is-focus .player-label {
@@ -888,7 +893,7 @@ ul {
   right: 6px;
   padding: 2px 7px;
   background: var(--red-strong);
-  color: #fff;
+  color: var(--text);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
