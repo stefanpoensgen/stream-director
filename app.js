@@ -1467,10 +1467,7 @@ function updateFocusDetails() {
     if (!entry) continue;
 
     const viewers = findLiveStream(name)?.viewers;
-    const parts = [
-      entry.player.resolutionLabel(),
-      viewers != null && `${formatViewers(viewers)} viewers`,
-    ];
+    const parts = [entry.player.resolutionLabel(), viewers != null && formatViewers(viewers)];
     entry.details.textContent = parts
       .filter(Boolean)
       .map((part) => ` · ${part}`)
