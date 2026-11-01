@@ -71,6 +71,8 @@ Buttons in the bottom-left corner: **Menu** / **Hide menu** (channel list), **Ch
 
 Hovering the focus shows its name with the resolution actually on screen (e.g. `1080p60`), its volume slider and mute button.
 
+Once the mouse has rested for 3 seconds the corner with the logo and buttons fades out (in the viewer layout the tile names too); moving the mouse brings them back.
+
 **Volume** is set per channel and remembered: hover the focus for its slider and mute button, or press `↑`/`↓` and `M`. Muting keeps the volume; changing the volume unmutes.
 
 ## Layout

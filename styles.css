@@ -87,7 +87,13 @@ ul {
   background: var(--bg); /* true black like the grid: the corner never changes */
   border-radius: var(--radius);
   user-select: none;
+  transition: opacity var(--transition);
   /* grid-row / grid-column set by JS */
+}
+
+/* Nothing static on screen while the mouse rests (OLED, and nothing but streams in the capture) */
+.app.is-idle .branding:not(:hover) {
+  opacity: 0;
 }
 
 .branding-logo {
@@ -800,6 +806,11 @@ ul {
 .player-slot.is-tile .player-label {
   opacity: 1;
   color: var(--text-dim); /* always visible at the same spot */
+}
+
+/* Viewer layout only: an OBS audience needs the names to tell the tiles apart */
+.app.is-idle.layout-viewer .player-slot.is-tile .player-label {
+  opacity: 0;
 }
 
 .player-slot.is-focus .player-label {

@@ -33,6 +33,8 @@ const VOLUME_COARSE_STEP_PERCENT = 5;
 const VOLUME_OSD_DURATION_MS = 1200;
 // The mark outline shows this long after the mark moved (and while the mouse is over the streams)
 const MARK_FLASH_DURATION_MS = 1200;
+// Corner buttons (and tile labels in the viewer layout) hide after the mouse rested this long
+const IDLE_HIDE_DELAY_MS = 3000;
 const SPEAKER_ICON = '\u{1F50A}';
 const MUTED_ICON = '\u{1F507}';
 const TWITCH_LOGIN_URL = 'https://www.twitch.tv/login';
@@ -103,6 +105,7 @@ function init() {
   applySidebarState();
   syncViewSwitch();
   syncLayoutToggle();
+  trackIdle();
 
   renderSidebar();
   syncPlayers();
@@ -907,6 +910,25 @@ function syncLayoutToggle() {
   dom.layoutToggle.title = isObs
     ? 'L shape for a 1920×1080 OBS scene — switch to a layout that fits the window (L)'
     : 'Fits the window — switch to the L shape for a 1920×1080 OBS scene (L)';
+  dom.app.classList.toggle('layout-viewer', !isObs);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Idle Hiding
+// ═══════════════════════════════════════════════════════════════════
+
+let idleTimer = null;
+
+/** Marks the app idle once the mouse has rested — static chrome fades, see styles.css. */
+function trackIdle() {
+  const restartIdleTimer = () => {
+    dom.app.classList.remove('is-idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => dom.app.classList.add('is-idle'), IDLE_HIDE_DELAY_MS);
+  };
+
+  window.addEventListener('mousemove', restartIdleTimer);
+  restartIdleTimer();
 }
 
 // ═══════════════════════════════════════════════════════════════════
