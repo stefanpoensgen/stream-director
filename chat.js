@@ -63,13 +63,21 @@ let sentHistoryIndex = -1;
 
 let restyleUserIds = null; // chatters whose 7TV look changed since the last frame (null: none)
 let restyleEveryone = false;
+let changedPersonalSets = null; // 7TV personal sets that arrived or changed since the last frame
 
 const messagesByElement = new WeakMap();
 const sevenTvEvents = new SevenTvEvents();
-const emotes = createEmoteRegistry(sevenTvEvents, { onChannelChange: announceEmoteChange });
+const emotes = createEmoteRegistry(sevenTvEvents, {
+  onChannelChange: announceEmoteChange,
+  onPersonalSetChange: schedulePersonalRerender,
+});
 const cosmetics = createSevenTvCosmetics(sevenTvEvents, {
   onChange: scheduleRestyle,
-  onPersonalSet: (setId) => emotes.ensurePersonalSet(setId),
+  onPersonalSet: (setId) => {
+    // A set already known needs the chatter's earlier messages redrawn; an unknown one is fetched first
+    schedulePersonalRerender(setId);
+    emotes.ensurePersonalSet(setId);
+  },
 });
 const reader = new IrcConnection({ onMessage: handleReaderMessage, onStatus: showReaderStatus });
 const sync = new BroadcastChannel(CHAT_SYNC_CHANNEL);
@@ -265,7 +273,7 @@ async function loadHistory(channel) {
   const earlier = history.messages.filter((message) => !message.id || !liveIds.has(message.id));
   channel.messages = [...earlier, ...channel.messages];
   trimMessages(channel);
-  if (channel === shown) renderAll();
+  if (channel === shown) refreshShown();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -641,7 +649,7 @@ function scheduleFlush() {
 function flushAppends() {
   isFlushScheduled = false;
   if (needsFullRender) {
-    renderAll();
+    refreshShown();
     return;
   }
 
@@ -658,19 +666,92 @@ function flushAppends() {
   }
 }
 
+/** Draws the shown chat from scratch, at its newest message (a channel switch). */
 function renderAll() {
+  renderList();
+  setPinned(true);
+}
+
+/** Redraws the shown chat in place: a paused chat keeps the message being read where it is. */
+function refreshShown() {
+  if (isPinned) {
+    renderAll();
+    return;
+  }
+
+  const anchor = captureScrollAnchor();
+  renderList();
+  restoreScrollAnchor(anchor);
+}
+
+function renderList() {
   pendingAppends = [];
   needsFullRender = false;
 
   dom.list.replaceChildren(...(shown?.messages.map((message) => elementOf(shown, message)) ?? []));
   dom.empty.classList.toggle('hidden', Boolean(shown));
-  setPinned(true);
+}
+
+/** The topmost message in view and its distance from the top of the list's viewport. */
+function captureScrollAnchor() {
+  const top = dom.scroller.getBoundingClientRect().top;
+  const message = shown?.messages.find(
+    (candidate) => candidate.element?.getBoundingClientRect().bottom > top,
+  );
+
+  return message ? { message, offset: message.element.getBoundingClientRect().top - top } : null;
+}
+
+function restoreScrollAnchor(anchor) {
+  const element = anchor?.message.element;
+  if (!element?.isConnected) return;
+
+  const top = dom.scroller.getBoundingClientRect().top;
+  dom.scroller.scrollTop += element.getBoundingClientRect().top - top - anchor.offset;
+  lastScrollTop = dom.scroller.scrollTop;
 }
 
 /** Drops the rendered elements, e.g. after emotes or badges arrived — the shown chat is redrawn. */
 function invalidate(channel) {
+  const anchor = channel === shown && !isPinned ? captureScrollAnchor() : null;
   for (const message of channel.messages) message.element = null;
-  if (channel === shown) renderAll();
+  if (channel !== shown) return;
+
+  if (anchor) {
+    renderList();
+    restoreScrollAnchor(anchor);
+  } else {
+    renderAll();
+  }
+}
+
+/** Redraws, in place, the messages of chatters that use one of the changed 7TV personal sets. */
+function schedulePersonalRerender(setId) {
+  const isFirstChange = !changedPersonalSets;
+  (changedPersonalSets ??= new Set()).add(setId);
+  if (!isFirstChange) return;
+
+  requestAnimationFrame(() => {
+    const changed = changedPersonalSets;
+    changedPersonalSets = null;
+    rerenderWhere((message) => {
+      const setIds = message.userId ? cosmetics.personalSetIds(message.userId) : null;
+      return Boolean(setIds) && [...changed].some((changedId) => setIds.has(changedId));
+    });
+  });
+}
+
+function rerenderWhere(isAffected) {
+  for (const channel of channels.values()) {
+    for (const message of channel.messages) {
+      if (!message.element || !isAffected(message)) continue;
+
+      const previous = message.element;
+      message.element = null;
+      if (channel === shown && previous.isConnected)
+        previous.replaceWith(elementOf(channel, message));
+    }
+  }
 }
 
 function invalidateAll() {
@@ -846,10 +927,14 @@ function complete(backwards) {
 function completionCandidates(word) {
   const isMentionWord = word.startsWith('@');
   const prefix = (isMentionWord ? word.slice(1) : word).toLowerCase();
-  const chatters = [...shown.chatters.values()].reverse(); // most recent first
   const startsWithPrefix = (name) => name.toLowerCase().startsWith(prefix);
+  // Most recent first; a localized display name is matched too, but a mention needs the login
+  const chatters = [...shown.chatters]
+    .reverse()
+    .filter(([login, displayName]) => login.startsWith(prefix) || startsWithPrefix(displayName))
+    .map(([login, displayName]) => (displayName.toLowerCase() === login ? displayName : login));
 
-  if (isMentionWord) return chatters.filter(startsWithPrefix).map((name) => `@${name}`);
+  if (isMentionWord) return chatters.map((name) => `@${name}`);
 
   const usable = emotes.usable(shown.roomId);
   const emoteNames = [
@@ -860,7 +945,7 @@ function completionCandidates(word) {
     .map((emote) => emote.name)
     .filter(startsWithPrefix)
     .sort(byLengthThenName);
-  return [...new Set([...emoteNames, ...chatters.filter(startsWithPrefix)])];
+  return [...new Set([...emoteNames, ...chatters])];
 }
 
 /** Shorter names first — "xqc" + Tab should offer xqcL before xqcLongEmoteName. */

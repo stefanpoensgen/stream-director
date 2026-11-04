@@ -66,9 +66,9 @@ export function twitchEmote(id, name) {
 /**
  * All third-party emotes the chat knows: global ones, one set per channel (by Twitch room ID) and
  * 7TV personal sets. `onChannelChange(roomId, change)` reports live 7TV edits of a channel's set:
- * { added, removed, renamed, actor }.
+ * { added, removed, renamed, actor }; `onPersonalSetChange(setId)` a personal set that arrived or changed.
  */
-export function createEmoteRegistry(sevenTvEvents, { onChannelChange }) {
+export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonalSetChange }) {
   const globalEmotes = new Map();
   const channelEmotes = new Map(); // room ID → Map name → emote
   const sevenTvSetRooms = new Map(); // 7TV emote set ID → room ID
@@ -86,11 +86,18 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange }) {
       return;
     }
 
-    if (personalSets.has(body.id)) applySevenTvUpdate(personalSets.get(body.id), body, 'personal');
+    if (!personalSets.has(body.id)) return;
+
+    const change = applySevenTvUpdate(personalSets.get(body.id), body, 'personal');
+    if (change.added.length + change.removed.length + change.renamed.length > 0) {
+      onPersonalSetChange(body.id);
+    }
   });
   sevenTvEvents.on(SEVENTV_SET_CREATE, ({ object }) => {
-    if (object?.id && !personalSets.has(object.id))
-      personalSets.set(object.id, toSevenTvSet(object));
+    if (!object?.id || personalSets.has(object.id)) return;
+
+    personalSets.set(object.id, toSevenTvSet(object));
+    onPersonalSetChange(object.id);
   });
 
   async function loadGlobal() {
@@ -166,7 +173,10 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange }) {
 
     requestedPersonalSets.add(setId);
     const set = await fetchJson(`${SEVENTV_API}/emote-sets/${setId}`);
-    if (set && !personalSets.has(setId)) personalSets.set(setId, toSevenTvSet(set));
+    if (!set || personalSets.has(setId)) return;
+
+    personalSets.set(setId, toSevenTvSet(set));
+    onPersonalSetChange(setId);
   }
 
   /**
