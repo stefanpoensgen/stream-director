@@ -68,20 +68,22 @@ let sentHistoryIndex = -1;
 
 let restyleUserIds = null; // chatters whose 7TV look changed since the last frame (null: none)
 let restyleEveryone = false;
-let changedPersonalSets = null; // 7TV personal sets that arrived or changed since the last frame
+// 7TV personal sets that arrived or changed, and chatters who got or lost one, since the last frame
+let changedPersonalSets = null;
+let changedPersonalSetUsers = null;
 
 const messagesByElement = new WeakMap();
 const sevenTvEvents = new SevenTvEvents();
 const emotes = createEmoteRegistry(sevenTvEvents, {
   onChannelChange: announceEmoteChange,
-  onPersonalSetChange: schedulePersonalRerender,
+  onPersonalSetChange: (setId) => schedulePersonalRerender({ setId }),
 });
 const cosmetics = createSevenTvCosmetics(sevenTvEvents, {
   onChange: scheduleRestyle,
-  onPersonalSet: (setId) => {
-    // A set already known needs the chatter's earlier messages redrawn; an unknown one is fetched first
-    schedulePersonalRerender(setId);
-    emotes.ensurePersonalSet(setId);
+  onPersonalSetsChange: (userId, grantedSetId) => {
+    // The chatter's earlier messages are redrawn now; an unknown granted set again once it is fetched
+    schedulePersonalRerender({ userId });
+    if (grantedSetId) emotes.ensurePersonalSet(grantedSetId);
   },
 });
 const reader = new IrcConnection({ onMessage: handleReaderMessage, onStatus: showReaderStatus });
@@ -774,18 +776,30 @@ function invalidate(channel) {
   }
 }
 
-/** Redraws, in place, the messages of chatters that use one of the changed 7TV personal sets. */
-function schedulePersonalRerender(setId) {
+/**
+ * Redraws, in place, the messages of chatters whose 7TV personal emotes changed: of `userId`, or of
+ * everyone holding `setId`. Collected per frame.
+ */
+function schedulePersonalRerender({ setId, userId }) {
   const isFirstChange = !changedPersonalSets;
-  (changedPersonalSets ??= new Set()).add(setId);
+  changedPersonalSets ??= new Set();
+  changedPersonalSetUsers ??= new Set();
+  if (setId) changedPersonalSets.add(setId);
+  if (userId) changedPersonalSetUsers.add(userId);
   if (!isFirstChange) return;
 
   requestAnimationFrame(() => {
-    const changed = changedPersonalSets;
+    const sets = changedPersonalSets;
+    const users = changedPersonalSetUsers;
     changedPersonalSets = null;
+    changedPersonalSetUsers = null;
+
     rerenderWhere((message) => {
-      const setIds = message.userId ? cosmetics.personalSetIds(message.userId) : null;
-      return Boolean(setIds) && [...changed].some((changedId) => setIds.has(changedId));
+      if (!message.userId) return false;
+      if (users.has(message.userId)) return true;
+
+      const setIds = cosmetics.personalSetIds(message.userId);
+      return Boolean(setIds) && [...sets].some((changedId) => setIds.has(changedId));
     });
   });
 }

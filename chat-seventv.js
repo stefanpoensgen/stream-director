@@ -94,10 +94,10 @@ function subscriptionKey(type, condition) {
 /**
  * Name paints, badges and personal emote sets of 7TV users, by Twitch user ID.
  * `onChange(twitchId)` fires when a chatter's look changed (null: possibly anyone's, a paint or badge
- * arrived); `onPersonalSet(setId)` when a chatter got an
- * emote set whose emotes may not be known yet.
+ * arrived); `onPersonalSetsChange(twitchId, grantedSetId)` when a chatter got (`grantedSetId`, whose
+ * emotes may not be known yet) or lost (null) a personal emote set.
  */
-export function createSevenTvCosmetics(events, { onChange, onPersonalSet }) {
+export function createSevenTvCosmetics(events, { onChange, onPersonalSetsChange }) {
   const paints = new Map(); // paint ID → { name, backgroundImage, filter }
   const badges = new Map(); // badge ID → { title, url, srcset }
   const users = new Map(); // Twitch user ID → { paintId, badgeId, emoteSetIds }
@@ -136,12 +136,10 @@ export function createSevenTvCosmetics(events, { onChange, onPersonalSet }) {
     else if (kind === 'BADGE')
       user.badgeId = isGranted ? refId : user.badgeId === refId ? null : user.badgeId;
     else if (kind === 'EMOTE_SET') {
-      if (isGranted) {
-        user.emoteSetIds.add(refId);
-        onPersonalSet(refId);
-      } else {
-        user.emoteSetIds.delete(refId);
-      }
+      if (isGranted) user.emoteSetIds.add(refId);
+      else user.emoteSetIds.delete(refId);
+      onPersonalSetsChange(twitchId, isGranted ? refId : null);
+      return;
     } else {
       return;
     }

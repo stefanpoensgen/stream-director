@@ -318,16 +318,35 @@ function applySevenTvUpdate(emotes, body, scope) {
     change.added.push(emote.name);
   }
 
-  for (const { key, old_value: previous, value } of body.updated ?? []) {
-    const emote = key === 'emotes' && value ? fromSevenTv(value, scope) : null;
-    if (!emote || !previous || emotes.get(emote.name)?.id === emote.id) continue;
+  for (const { key, nested, old_value: previous, value } of body.updated ?? []) {
+    if (key !== 'emotes' || !value) continue;
 
-    deleteSevenTvEmote(emotes, previous.id);
-    emotes.set(emote.name, emote);
-    change.renamed.push({ from: previous.name, to: emote.name });
+    const rename = nested ? nestedRename(value) : fullRename(previous, value, scope);
+    const emote = rename && emotes.get(rename.from);
+    if (!emote || emote.provider !== PROVIDERS.sevenTv || emotes.has(rename.to)) continue;
+
+    emotes.delete(rename.from);
+    emotes.set(rename.to, { ...emote, ...rename.emote, name: rename.to });
+    change.renamed.push({ from: rename.from, to: rename.to });
   }
 
   return change;
+}
+
+/** A rename sent as field changes ({ key: 'name', old_value, value }) — 7TV's usual form. */
+function nestedRename(changes) {
+  const name = Array.isArray(changes) ? changes.find((field) => field.key === 'name') : null;
+  return name?.old_value && name.value
+    ? { from: name.old_value, to: name.value, emote: null }
+    : null;
+}
+
+/** A rename sent as the whole emote, before and after. */
+function fullRename(previous, value, scope) {
+  const emote = previous ? fromSevenTv(value, scope) : null;
+  return emote && previous.name !== emote.name
+    ? { from: previous.name, to: emote.name, emote }
+    : null;
 }
 
 /** Removes a 7TV emote by ID; false when it was not there. */
