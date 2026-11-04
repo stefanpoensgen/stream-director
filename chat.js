@@ -62,7 +62,7 @@ let needsFullRender = false;
 let isFlushScheduled = false;
 
 let reply = null; // the message being replied to
-let completion = null; // ongoing Tab completion: { start, candidates, index }
+let completion = null; // ongoing Tab completion: { start, candidates, index, value, cursor }
 const sentHistory = [];
 let sentHistoryIndex = -1;
 
@@ -979,6 +979,11 @@ function insertMention(login) {
 function complete(backwards) {
   const { value, selectionStart } = dom.input;
 
+  // Clicked elsewhere, pasted, edited: the last completion no longer applies — start a new one
+  if (completion && (value !== completion.value || selectionStart !== completion.cursor)) {
+    resetCompletion();
+  }
+
   if (!completion) {
     const start = value.lastIndexOf(' ', selectionStart - 1) + 1;
     const word = value.slice(start, selectionStart);
@@ -1001,6 +1006,8 @@ function complete(backwards) {
 
   const cursor = completion.start + replacement.length;
   dom.input.setSelectionRange(cursor, cursor);
+  completion.value = dom.input.value;
+  completion.cursor = cursor;
 }
 
 function completionCandidates(word) {
