@@ -331,7 +331,9 @@ function applySevenTvUpdate(emotes, body, scope) {
 
     const rename = nested ? nestedRename(value) : fullRename(previous, value, scope);
     const emote = rename && emotes.get(rename.from);
-    if (!emote || emote.provider !== PROVIDERS.sevenTv || emotes.has(rename.to)) continue;
+    // 7TV wins over BetterTTV and FFZ — only another 7TV emote (or this one, delivered twice) keeps the name
+    if (!emote || emote.provider !== PROVIDERS.sevenTv) continue;
+    if (emotes.get(rename.to)?.provider === PROVIDERS.sevenTv) continue;
 
     emotes.delete(rename.from);
     emotes.set(rename.to, { ...emote, ...rename.emote, name: rename.to });

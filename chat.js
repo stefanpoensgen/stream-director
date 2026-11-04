@@ -627,7 +627,10 @@ async function loadSharedSource(roomId) {
   sharedSources.set(roomId, source);
   if (!emotes.hasChannel(roomId)) await emotes.loadChannel(roomId);
 
-  if (shown) invalidate(shown);
+  // Background chats too: their cached messages from this source lack its avatar, badges and emotes
+  for (const channel of channels.values()) {
+    if (channel.messages.some((message) => message.sourceRoomId === roomId)) invalidate(channel);
+  }
 }
 
 /** 7TV cosmetics often arrive after a chatter's message — rendered names are restyled once per frame. */
