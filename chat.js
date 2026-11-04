@@ -33,6 +33,13 @@ const SECONDS_PER_DAY = 86_400;
 const ME_COMMAND = '/me ';
 const PLAIN_EMOTE_NAME = /^\w+$/; // Twitch's old smileys (":)", "<3") are patterns, not names
 const SCOPE_LABELS = { channel: 'Channel', global: 'Global', personal: 'Personal' };
+const GLOBAL_TWITCH_OWNER = 'Global'; // Twitch's own emotes have no owner
+const PICKER_TABS = [
+  { provider: PROVIDERS.twitch, label: 'Twitch' },
+  { provider: PROVIDERS.sevenTv, label: '7TV' },
+  { provider: PROVIDERS.bttv, label: 'BetterTTV' },
+  { provider: PROVIDERS.ffz, label: 'FFZ' },
+];
 const IDENTITY_RETRY_BASE_DELAY_MS = 5000;
 const IDENTITY_RETRY_MAX_DELAY_MS = 60_000;
 
@@ -44,6 +51,7 @@ const channels = new Map();
 const sharedSources = new Map();
 const requestedSources = new Set();
 let ownTwitchEmotes = []; // [{ owner, emotes }] the logged-in user may send
+let pickerProvider = PROVIDERS.twitch; // the emote picker's open tab, kept while the window is open
 let shown = null;
 let identity = null; // { login, token } while logged in
 let writer = null;
@@ -123,6 +131,7 @@ function cacheDom() {
   dom.emoteButton = document.getElementById('emote-button');
   dom.emotePicker = document.getElementById('emote-picker');
   dom.emoteSearch = document.getElementById('emote-search');
+  dom.emotePickerTabs = document.getElementById('emote-picker-tabs');
   dom.emotePickerList = document.getElementById('emote-picker-list');
   dom.emoteCard = document.getElementById('emote-card');
 }
@@ -524,7 +533,7 @@ async function loadOwnTwitchEmotes() {
   const sets = (await fetchChatApi('/api/chat/emotes')) ?? [];
   const byOwner = new Map();
   for (const { owner, emotes: setEmotes } of sets) {
-    const key = owner ?? 'Global'; // Twitch's own emotes have no owner
+    const key = owner ?? GLOBAL_TWITCH_OWNER;
     if (!byOwner.has(key)) byOwner.set(key, new Map());
     for (const { id, name } of setEmotes) {
       if (PLAIN_EMOTE_NAME.test(name)) byOwner.get(key).set(name, twitchEmote(id, name));
@@ -1096,19 +1105,62 @@ function closeEmotePicker() {
   dom.emoteButton.classList.remove('is-open');
 }
 
+/** All picker sections: Twitch (the shown channel's emotes first, Twitch's own last), then 7TV, BTTV, FFZ. */
+function pickerSections() {
+  const usable = emotes.usable(shown.roomId);
+  const rank = (set) =>
+    set.owner === shown.displayName ? 0 : set.owner === GLOBAL_TWITCH_OWNER ? 2 : 1;
+  const twitchSets = [...ownTwitchEmotes].sort(
+    (a, b) => rank(a) - rank(b) || a.owner.localeCompare(b.owner),
+  );
+
+  return [
+    ...twitchSets.map((set) => ({
+      provider: PROVIDERS.twitch,
+      title: set.owner === GLOBAL_TWITCH_OWNER ? 'Twitch' : set.owner,
+      emotes: set.emotes,
+    })),
+    ...PICKER_TABS.filter((tab) => tab.provider !== PROVIDERS.twitch).flatMap(({ provider }) => [
+      {
+        provider,
+        title: shown.displayName,
+        emotes: usable.channel.filter((emote) => emote.provider === provider),
+      },
+      {
+        provider,
+        title: 'Global',
+        emotes: usable.global.filter((emote) => emote.provider === provider),
+      },
+    ]),
+  ].filter((section) => section.emotes.length > 0);
+}
+
+/** One tab per provider; a search looks through all of them. */
 function renderEmotePicker() {
   const query = dom.emoteSearch.value.trim().toLowerCase();
-  const usable = emotes.usable(shown.roomId);
-  // The shown channel's own subscriber emotes first
-  const isShownOwner = (set) => set.owner === shown.displayName;
-  const twitchSets = [...ownTwitchEmotes].sort((a, b) => isShownOwner(b) - isShownOwner(a));
-  const sections = [
-    { title: `${shown.displayName} · 7TV, BetterTTV, FFZ`, emotes: usable.channel },
-    ...twitchSets.map((set) => ({ title: `Twitch · ${set.owner}`, emotes: set.emotes })),
-    { title: 'Global · 7TV, BetterTTV, FFZ', emotes: usable.global },
-  ];
+  const sections = pickerSections();
+  const tabs = PICKER_TABS.filter((tab) =>
+    sections.some((section) => section.provider === tab.provider),
+  );
+  if (!tabs.some((tab) => tab.provider === pickerProvider)) pickerProvider = tabs[0]?.provider;
 
-  const nodes = sections.flatMap(({ title, emotes: sectionEmotes }) => {
+  dom.emotePickerTabs.replaceChildren(
+    ...tabs.map(({ provider, label }) => {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'emote-picker-tab';
+      tab.dataset.provider = provider;
+      tab.textContent = label;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', String(!query && provider === pickerProvider));
+      return tab;
+    }),
+  );
+
+  const labelOf = (provider) => PICKER_TABS.find((tab) => tab.provider === provider).label;
+  const nodes = sections.flatMap(({ provider, title, emotes: sectionEmotes }) => {
+    if (!query && provider !== pickerProvider) return [];
+
     const matching = query
       ? sectionEmotes.filter((emote) => emote.name.toLowerCase().includes(query))
       : sectionEmotes;
@@ -1116,7 +1168,7 @@ function renderEmotePicker() {
 
     const heading = document.createElement('div');
     heading.className = 'emote-picker-title';
-    heading.textContent = title;
+    heading.textContent = query ? `${labelOf(provider)} · ${title}` : title;
     const grid = document.createElement('div');
     grid.className = 'emote-picker-grid';
     grid.append(...matching.map(createPickerItem));
@@ -1131,6 +1183,12 @@ function renderEmotePicker() {
   }
   dom.emotePickerList.replaceChildren(...nodes);
   dom.emotePickerList.scrollTop = 0;
+}
+
+function selectPickerTab(provider) {
+  pickerProvider = provider;
+  dom.emoteSearch.value = '';
+  renderEmotePicker();
 }
 
 function createPickerItem(emote) {
@@ -1251,6 +1309,10 @@ function bindEvents() {
   dom.emoteButton.addEventListener('click', toggleEmotePicker);
   dom.emoteSearch.addEventListener('input', renderEmotePicker);
   dom.emoteSearch.addEventListener('keydown', handleEmoteSearchKey);
+  dom.emotePickerTabs.addEventListener('click', (event) => {
+    const tab = event.target.closest('.emote-picker-tab');
+    if (tab) selectPickerTab(tab.dataset.provider);
+  });
   dom.emotePickerList.addEventListener('click', (event) => {
     const item = event.target.closest('.emote-picker-item');
     if (item) insertEmote(item.dataset.name);
