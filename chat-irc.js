@@ -184,12 +184,20 @@ export class IrcConnection {
     clearInterval(this.#keepaliveTimer);
     this.#keepaliveTimer = setInterval(() => {
       if (Date.now() - this.#lastActivityAt > KEEPALIVE_INTERVAL_MS + KEEPALIVE_TIMEOUT_MS) {
-        this.#socket.close();
+        this.#abandonSocket();
         return;
       }
 
       this.#send('PING :keepalive');
     }, KEEPALIVE_INTERVAL_MS);
+  }
+
+  /** Reconnects right away: closing a dead connection may take long to report back. */
+  #abandonSocket() {
+    const socket = this.#socket;
+    this.#handleClose(socket);
+    this.#socket = null;
+    socket.close();
   }
 
   #handleClose(socket) {

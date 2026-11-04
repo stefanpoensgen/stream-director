@@ -6,6 +6,8 @@ const EVENTS_URL = 'wss://events.7tv.io/v3';
 const OPCODES = { dispatch: 0, hello: 1, reconnect: 4, subscribe: 35, unsubscribe: 36 };
 const RECONNECT_BASE_DELAY_MS = 2000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
+// 7TV sends a heartbeat at the interval announced in its hello; two missed ones mean a dead connection
+const MISSED_HEARTBEATS_LIMIT = 2;
 const CHANNEL_EVENT_TYPES = ['cosmetic.*', 'entitlement.*', 'emote_set.*'];
 const PAINT_IMAGE_PREFIX = 'https://cdn.7tv.app/';
 const TWITCH_PLATFORM = 'TWITCH';
@@ -19,6 +21,8 @@ export class SevenTvEvents {
   #socket = null;
   #isReady = false;
   #reconnectAttempt = 0;
+  #lastFrameAt = 0;
+  #watchdogTimer = null;
 
   on(type, callback) {
     if (!this.#listeners.has(type)) this.#listeners.set(type, []);
@@ -48,10 +52,13 @@ export class SevenTvEvents {
   }
 
   #receive({ op, d }) {
+    this.#lastFrameAt = Date.now();
+
     switch (op) {
       case OPCODES.hello:
         this.#isReady = true;
         this.#reconnectAttempt = 0;
+        this.#startWatchdog(d.heartbeat_interval);
         for (const { type, condition } of this.#subscriptions.values()) {
           this.#send(OPCODES.subscribe, type, condition);
         }
@@ -69,11 +76,31 @@ export class SevenTvEvents {
     this.#socket.send(JSON.stringify({ op, d: { type, condition } }));
   }
 
+  /** A connection that stays open but delivers nothing (e.g. after a network change) is closed and redone. */
+  #startWatchdog(heartbeatInterval) {
+    clearInterval(this.#watchdogTimer);
+    if (!heartbeatInterval) return;
+
+    this.#watchdogTimer = setInterval(() => {
+      if (Date.now() - this.#lastFrameAt > heartbeatInterval * MISSED_HEARTBEATS_LIMIT) {
+        this.#abandonSocket();
+      }
+    }, heartbeatInterval);
+  }
+
+  /** Reconnects right away: closing a dead connection may take long to report back. */
+  #abandonSocket() {
+    const socket = this.#socket;
+    this.#handleClose(socket);
+    socket?.close();
+  }
+
   #handleClose(socket) {
-    if (socket !== this.#socket) return;
+    if (!socket || socket !== this.#socket) return;
 
     this.#isReady = false;
     this.#socket = null;
+    clearInterval(this.#watchdogTimer);
     if (this.#subscriptions.size === 0) return;
 
     const delay = Math.min(
