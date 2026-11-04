@@ -3,6 +3,7 @@
  * stays dim. Messages move all the time and may be brighter.                          */
 :root {
   --emote-height: 28px;
+  --gif-height: 100px;
   --badge-size: 18px;
   --chat-padding: 10px;
 }
@@ -251,6 +252,30 @@ button {
   width: auto;
   margin: -5px 0;
   vertical-align: middle;
+}
+
+/* ─── GIPHY GIFs ─────────────────────────────────────────────────── */
+.gif-image {
+  display: block;
+  height: var(--gif-height);
+  width: auto;
+  max-width: 100%;
+  margin: 4px 0 2px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.gif-title {
+  display: none;
+}
+
+/* A GIF a moderator deleted is not shown anymore — only its title stays */
+.message.is-deleted .gif-image {
+  display: none;
+}
+
+.message.is-deleted .gif-title {
+  display: inline;
 }
 
 /* Zero-width emotes sit on top of the emote before them */

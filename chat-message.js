@@ -10,6 +10,11 @@ const CHEER_PATTERN = /^(.+?)(\d+)$/; // "Cheer100", "4Head500"
 const SEVENTV_BADGE_CLASS = 'is-seventv';
 const WORD_EDGE_PUNCTUATION = /^[^\w]+|[^\w]+$/g;
 
+// GIPHY GIFs arrive as "start-end|giphyId|url" in the gifs tag, the text is their "[title]".
+// The URL points to the full-size original (often megabytes) — fixed-height renditions load instead.
+const GIF_RANGE_PATTERN = /(\d+)-(\d+)\|([A-Za-z0-9]+)\|/g;
+const GIPHY_MEDIA_URL = 'https://media.giphy.com/media';
+
 // What Twitch shows for users who never picked a color
 const DEFAULT_NAME_COLORS = [
   '#ff0000',
@@ -59,6 +64,7 @@ export function createChatMessage(irc) {
     text: action ? action[1] : rawText,
     isAction: Boolean(action),
     emoteRanges: parseEmoteRanges(tags.emotes),
+    gifRanges: parseGifRanges(tags.gifs),
     reply: tags['reply-parent-msg-id']
       ? { displayName: tags['reply-parent-display-name'], body: tags['reply-parent-msg-body'] }
       : null,
@@ -191,6 +197,15 @@ function parseEmoteRanges(tag) {
     .sort((a, b) => a.start - b.start);
 }
 
+/** "0-42|dMM3d363Kz6Abd8lOW|https://…" → [{ gifId, start, end }] in code points, sorted by position. */
+function parseGifRanges(tag) {
+  if (!tag) return [];
+
+  return [...tag.matchAll(GIF_RANGE_PATTERN)]
+    .map(([, start, end, gifId]) => ({ gifId, start: Number(start), end: Number(end) }))
+    .sort((a, b) => a.start - b.start);
+}
+
 function createLine(className, text) {
   const line = document.createElement('div');
   line.className = className;
@@ -267,21 +282,28 @@ function createText(message, { findEmote, findCheermote }) {
   return text;
 }
 
-/** Words, spaces, Twitch emotes (by position), cheermotes and third-party emotes (by exact name). */
+/**
+ * Words, spaces, Twitch emotes and GIFs (by position), cheermotes and third-party emotes
+ * (by exact name).
+ */
 function tokenize(message, findWord) {
-  const characters = [...message.text]; // Twitch counts emote positions in code points
+  const characters = [...message.text]; // Twitch counts emote and GIF positions in code points
+  const ranges = [...message.emoteRanges, ...message.gifRanges].sort((a, b) => a.start - b.start);
   const parts = [];
   let cursor = 0;
 
-  for (const { id, start, end } of message.emoteRanges) {
+  for (const range of ranges) {
+    const { start, end } = range;
     // Overlapping or out-of-range positions (rare Twitch glitches) are left as text
     if (start < cursor || end >= characters.length) continue;
 
     pushWords(parts, characters.slice(cursor, start).join(''), findWord);
-    parts.push({
-      type: 'emote',
-      emote: twitchEmote(id, characters.slice(start, end + 1).join('')),
-    });
+    const text = characters.slice(start, end + 1).join('');
+    parts.push(
+      range.gifId
+        ? { type: 'gif', gifId: range.gifId, text }
+        : { type: 'emote', emote: twitchEmote(range.id, text) },
+    );
     cursor = end + 1;
   }
   pushWords(parts, characters.slice(cursor).join(''), findWord);
@@ -363,6 +385,8 @@ function renderPart(part) {
       return createEmote(part);
     case 'cheermote':
       return createCheermote(part.cheermote);
+    case 'gif':
+      return createGif(part);
     case 'link':
       return createLink(part.text);
     case 'mention': {
@@ -436,6 +460,30 @@ function trackAspectRatio(image, emote) {
     image.addEventListener('load', () => setRatio(image.naturalWidth, image.naturalHeight), {
       once: true,
     });
+}
+
+/**
+ * A GIPHY GIF below the name; a deleted one only keeps its "[title]".
+ * Fixed height: the line keeps its size while the GIF loads.
+ */
+function createGif({ gifId, text }) {
+  const gif = document.createElement('span');
+  gif.className = 'gif';
+
+  const image = document.createElement('img');
+  image.className = 'gif-image';
+  image.alt = text;
+  image.title = text;
+  image.decoding = 'async';
+  image.srcset = `${GIPHY_MEDIA_URL}/${gifId}/100.webp 1x, ${GIPHY_MEDIA_URL}/${gifId}/200.webp 2x`;
+  image.src = `${GIPHY_MEDIA_URL}/${gifId}/200.webp`;
+
+  const title = document.createElement('span');
+  title.className = 'gif-title';
+  title.textContent = text;
+
+  gif.append(image, title);
+  return gif;
 }
 
 function createLink(text) {
