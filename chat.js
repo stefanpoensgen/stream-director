@@ -45,9 +45,10 @@ const IDENTITY_RETRY_MAX_DELAY_MS = 60_000;
 
 const dom = {};
 
-/** login → { login, displayName, roomId, messages, roomState, badges, cheermotes, chatters } */
+/** login → { login, displayName, roomId, messages, roomState, badges, cheermotes, twitchEmotes, chatters } */
 const channels = new Map();
-// Other channels of a shared chat (Stream Together), by room ID: { login, displayName, badges, cheermotes }
+// Other channels of a shared chat (Stream Together), by room ID:
+// { login, displayName, badges, cheermotes, twitchEmotes }
 const sharedSources = new Map();
 const requestedSources = new Set();
 let ownTwitchEmotes = []; // [{ owner, emotes }] the logged-in user may send
@@ -177,6 +178,7 @@ function joinChannel(login, displayName) {
     roomState: {},
     badges: new Map(),
     cheermotes: null,
+    twitchEmotes: new Map(), // the channel's own Twitch emotes by name (sub and follower emotes)
     chatters: new Map(), // login → display name, most recent last
     // Mod actions seen while the history is still loading — they apply to it as well
     pendingModeration: [],
@@ -186,6 +188,7 @@ function joinChannel(login, displayName) {
   reader.join(login);
   loadBadges(channel);
   loadCheermotes(channel);
+  loadTwitchChannelEmotes(channel);
   loadHistory(channel);
 }
 
@@ -249,6 +252,16 @@ async function fetchCheermotes(login) {
   const colors = [...cheer.colors].sort((a, b) => a.bits - b.bits);
 
   return { byPrefix, colors };
+}
+
+async function loadTwitchChannelEmotes(channel) {
+  channel.twitchEmotes = await fetchTwitchChannelEmotes(channel.login);
+  if (isCurrent(channel)) invalidate(channel);
+}
+
+async function fetchTwitchChannelEmotes(login) {
+  const list = (await fetchChatApi(`/api/chat/channel-emotes/${login}`)) ?? [];
+  return new Map(list.map(({ id, name }) => [name, twitchEmote(id, name)]));
 }
 
 /** JSON from the host's chat API, or null — a missing extra must not break the chat. */
@@ -571,12 +584,17 @@ function show(channel) {
 
 function renderContext(channel) {
   return {
-    findEmote: (name, message) =>
-      emotes.find(
-        message.sourceRoomId ?? channel.roomId,
-        name,
-        message.userId ? cosmetics.personalSetIds(message.userId) : null,
-      ),
+    // Third-party emotes by name, then the channel's own Twitch emotes: Twitch leaves those
+    // unmarked when the sender may not use them (e.g. a bot repeating "wkaLOVE")
+    findEmote: (name, message) => {
+      const roomChannel = message.sourceRoomId ? sourceChannel(message.sourceRoomId) : channel;
+      const personalSetIds = message.userId ? cosmetics.personalSetIds(message.userId) : null;
+
+      return (
+        emotes.find(message.sourceRoomId ?? channel.roomId, name, personalSetIds) ??
+        roomChannel?.twitchEmotes?.get(name)
+      );
+    },
     findBadge: (set, version, message) => {
       const key = `${set}/${version}`;
       const badges = message.sourceRoomId
@@ -636,15 +654,17 @@ async function loadSharedSource(roomId) {
   const [found] = (await fetchChatApi(`/api/chat/channels?ids=${roomId}`)) ?? [];
   if (!found) return;
 
-  const [badges, cheermotes] = await Promise.all([
+  const [badges, cheermotes, twitchEmotes] = await Promise.all([
     fetchChatApi(`/api/chat/badges/${found.login}`),
     fetchCheermotes(found.login),
+    fetchTwitchChannelEmotes(found.login),
   ]);
   const source = {
     login: found.login,
     displayName: found.displayName ?? found.login,
     badges: badges ? toBadgeMap(badges.channel) : new Map(),
     cheermotes,
+    twitchEmotes,
   };
   sharedSources.set(roomId, source);
   if (!emotes.hasChannel(roomId)) await emotes.loadChannel(roomId);

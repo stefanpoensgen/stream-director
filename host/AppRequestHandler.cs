@@ -48,6 +48,7 @@ internal sealed class AppRequestHandler(
     private static readonly Regex AvatarRoute = new(@"^/api/avatar/([a-z0-9_]+)$");
     private static readonly Regex ChatBadgesRoute = new(@"^/api/chat/badges/([a-z0-9_]+)$");
     private static readonly Regex ChatCheermotesRoute = new(@"^/api/chat/cheermotes/([a-z0-9_]+)$");
+    private static readonly Regex ChatChannelEmotesRoute = new(@"^/api/chat/channel-emotes/([a-z0-9_]+)$");
 
     private readonly JavaScriptSerializer _json = new();
 
@@ -93,6 +94,9 @@ internal sealed class AppRequestHandler(
 
         var chatCheermotesMatch = ChatCheermotesRoute.Match(uri.AbsolutePath);
         if (chatCheermotesMatch.Success) return await ChatCheermotesAsync(chatCheermotesMatch.Groups[1].Value);
+
+        var chatChannelEmotesMatch = ChatChannelEmotesRoute.Match(uri.AbsolutePath);
+        if (chatChannelEmotesMatch.Success) return await ChatChannelEmotesAsync(chatChannelEmotesMatch.Groups[1].Value);
 
         return Static(uri.AbsolutePath);
     }
@@ -165,6 +169,13 @@ internal sealed class AppRequestHandler(
         if (!TwitchClient.IsValidChannelName(channel)) return Text(400, "Invalid channel name");
 
         return Response(200, _json.Serialize(await twitch.FetchCheermotesAsync(channel)), JsonContentType);
+    }
+
+    private async Task<CoreWebView2WebResourceResponse> ChatChannelEmotesAsync(string channel)
+    {
+        if (!TwitchClient.IsValidChannelName(channel)) return Text(400, "Invalid channel name");
+
+        return Response(200, _json.Serialize(await twitch.FetchChannelEmotesAsync(channel)), JsonContentType);
     }
 
     /// <summary>The logged-in user's own Twitch emotes, by owner — an empty list when logged out.</summary>

@@ -221,6 +221,26 @@ internal sealed class TwitchClient
             .ToList();
     }
 
+    /// <summary>
+    /// A channel's own Twitch emotes (subscriber tiers and follower emotes) — Twitch marks them only in
+    /// messages of chatters who may use them, so the chat also recognizes them by name.
+    /// </summary>
+    public async Task<List<object>> FetchChannelEmotesAsync(string channel)
+    {
+        var data = await GqlAsync(new
+        {
+            query = $"query {{ user(login: \"{channel}\") {{ subscriptionProducts {{ emotes {{ id token }} }} channel {{ localEmoteSets {{ emotes {{ id token }} }} }} }} }}",
+        });
+        var user = data["user"] as IDictionary;
+        var groups = (user?["subscriptionProducts"] as ICollection ?? Array.Empty<object>()).OfType<IDictionary>()
+            .Concat(((user?["channel"] as IDictionary)?["localEmoteSets"] as ICollection ?? Array.Empty<object>()).OfType<IDictionary>());
+
+        return groups
+            .SelectMany(group => (group["emotes"] as ICollection ?? Array.Empty<object>()).OfType<IDictionary>())
+            .Select(emote => (object)new { id = (string)emote["id"], name = (string)emote["token"] })
+            .ToList();
+    }
+
     /// <summary>Login and display name of channels by user ID — e.g. the other channels of a shared chat.</summary>
     public async Task<List<object>> FetchChannelsByIdAsync(IReadOnlyList<string> ids)
     {
