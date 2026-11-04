@@ -33,6 +33,8 @@ const SECONDS_PER_DAY = 86_400;
 const ME_COMMAND = '/me ';
 const PLAIN_EMOTE_NAME = /^\w+$/; // Twitch's old smileys (":)", "<3") are patterns, not names
 const SCOPE_LABELS = { channel: 'Channel', global: 'Global', personal: 'Personal' };
+const IDENTITY_RETRY_BASE_DELAY_MS = 5000;
+const IDENTITY_RETRY_MAX_DELAY_MS = 60_000;
 
 const dom = {};
 
@@ -47,6 +49,8 @@ let identity = null; // { login, token } while logged in
 let writer = null;
 let lastMainLoggedIn = null;
 let identityRequest = null;
+let identityRetryTimer = null;
+let identityRetryAttempt = 0;
 let globalBadges = new Map();
 
 let isPinned = true;
@@ -133,6 +137,8 @@ function applyMainState({ focus, channels: list, loggedIn }) {
   if (loggedIn === lastMainLoggedIn) return;
 
   lastMainLoggedIn = loggedIn;
+  clearTimeout(identityRetryTimer);
+  identityRetryAttempt = 0;
   refreshIdentity();
 }
 
@@ -160,6 +166,8 @@ function joinChannel(login, displayName) {
     badges: new Map(),
     cheermotes: null,
     chatters: new Map(), // login → display name, most recent last
+    // Mod actions seen while the history is still loading — they apply to it as well
+    pendingModeration: [],
   };
   channels.set(login, channel);
 
@@ -257,12 +265,15 @@ async function loadHistory(channel) {
     lines = (await response.json()).messages ?? [];
   } catch (error) {
     console.warn(`Chat history of ${channel.login} could not be loaded:`, error);
-    return;
+    lines = [];
   }
+
+  const moderation = channel.pendingModeration;
+  channel.pendingModeration = null;
   if (!isCurrent(channel) || lines.length === 0) return;
 
   // A copy collects the history; chatters and room state go straight into the channel
-  const history = { ...channel, messages: [] };
+  const history = { ...channel, messages: [], pendingModeration: null };
   for (const line of lines) {
     const message = parseIrcLine(line);
     learnRoomId(channel, message.tags['room-id']);
@@ -271,6 +282,9 @@ async function loadHistory(channel) {
 
   const liveIds = new Set(channel.messages.map((message) => message.id).filter(Boolean));
   const earlier = history.messages.filter((message) => !message.id || !liveIds.has(message.id));
+  for (const message of earlier) {
+    if (moderation.some((isAffected) => isAffected(message))) markDeleted(message);
+  }
   channel.messages = [...earlier, ...channel.messages];
   trimMessages(channel);
   if (channel === shown) refreshShown();
@@ -341,28 +355,33 @@ function rememberChatter(channel, message) {
 }
 
 function deleteMessage(channel, id) {
-  const message = channel.messages.find((candidate) => candidate.id === id);
-  if (message) markDeleted(message);
+  moderate(channel, (message) => message.id === id);
 }
 
 /** A timeout or ban hides the user's messages; without a user, a moderator cleared the whole chat. */
 function clearChat(channel, message) {
   const target = message.params[1];
   if (!target) {
-    channel.messages.forEach(markDeleted);
+    moderate(channel, () => true);
     addMessage(channel, createSystemMessage('A moderator cleared the chat'));
     return;
   }
 
-  for (const candidate of channel.messages) {
-    if (candidate.login === target) markDeleted(candidate);
-  }
+  moderate(channel, (candidate) => candidate.login === target);
 
   const duration = Number(message.tags['ban-duration']);
   const text = duration
     ? `${target} was timed out for ${formatDuration(duration)}`
     : `${target} was banned`;
   addMessage(channel, createSystemMessage(text));
+}
+
+/** Marks the affected messages deleted — also those of a history that is still loading. */
+function moderate(channel, isAffected) {
+  for (const message of channel.messages) {
+    if (isAffected(message)) markDeleted(message);
+  }
+  channel.pendingModeration?.push(isAffected);
 }
 
 function markDeleted(message) {
@@ -428,14 +447,20 @@ function refreshIdentity() {
 }
 
 async function loadIdentity() {
-  let next = null;
+  let data;
   try {
     const response = await fetch('/api/chat/identity');
-    const data = await response.json();
-    if (data.loggedIn) next = { login: data.login, token: data.token };
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    data = await response.json();
   } catch (error) {
     console.warn('Chat login could not be loaded:', error);
+    scheduleIdentityRetry();
+    return;
   }
+  identityRetryAttempt = 0;
+
+  const next = data.loggedIn ? { login: data.login, token: data.token } : null;
   if (next?.token === identity?.token) return;
 
   identity = next;
@@ -456,6 +481,19 @@ async function loadIdentity() {
   invalidateAll();
   updateComposer();
   loadOwnTwitchEmotes();
+}
+
+/** A failed lookup is retried while the main window is logged in — sending must not stay disabled. */
+function scheduleIdentityRetry() {
+  clearTimeout(identityRetryTimer);
+  if (!lastMainLoggedIn) return;
+
+  const delay = Math.min(
+    IDENTITY_RETRY_BASE_DELAY_MS * 2 ** identityRetryAttempt,
+    IDENTITY_RETRY_MAX_DELAY_MS,
+  );
+  identityRetryAttempt += 1;
+  identityRetryTimer = setTimeout(refreshIdentity, delay);
 }
 
 /** The Twitch emotes the user may send (globals, subscriptions) — for the picker and Tab completion. */

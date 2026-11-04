@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -198,16 +197,18 @@ internal sealed class AppRequestHandler(
         return Response(200, _json.Serialize(identity), JsonContentType);
     }
 
-    /// <summary>An expired token means logged out for the chat — reading works without one.</summary>
+    /// <summary>
+    /// An expired token means logged out for the chat — reading works without one. Other failures
+    /// answer 502, so the chat retries instead of taking a network hiccup for a logout.
+    /// </summary>
     private async Task<string?> FetchLoginOrNullAsync(string token)
     {
         try
         {
             return await twitch.FetchLoginAsync(token);
         }
-        catch (HttpRequestException error)
+        catch (TwitchUnauthorizedException)
         {
-            Trace.WriteLine($"Chat login could not be resolved: {error.Message}");
             return null;
         }
     }

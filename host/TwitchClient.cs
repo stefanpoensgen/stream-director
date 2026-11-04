@@ -21,6 +21,9 @@ internal enum PlaylistStatus
     Forbidden, // live, but not playable (subscriber-only, geo-blocked)
 }
 
+/// <summary>Twitch rejected the auth token (expired or revoked) — unlike a network error, retrying will not help.</summary>
+internal sealed class TwitchUnauthorizedException() : HttpRequestException("Twitch rejected the login (401)");
+
 internal sealed class TwitchClient
 {
     private const string GqlUrl = "https://gql.twitch.tv/gql";
@@ -328,6 +331,7 @@ internal sealed class TwitchClient
         if (authToken is not null) request.Headers.TryAddWithoutValidation("Authorization", $"OAuth {authToken}");
 
         using var response = await _http.SendAsync(request);
+        if (response.StatusCode == HttpStatusCode.Unauthorized) throw new TwitchUnauthorizedException();
         if (!response.IsSuccessStatusCode) throw new HttpRequestException($"Twitch GQL responded {(int)response.StatusCode}");
 
         var result = _json.Deserialize<Dictionary<string, object>>(await response.Content.ReadAsStringAsync());
