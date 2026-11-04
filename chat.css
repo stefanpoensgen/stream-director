@@ -425,10 +425,11 @@ button {
   position: absolute;
   top: 6px;
   right: calc(var(--chat-padding) + 1px);
-  width: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
   height: calc(100% - 14px);
-  font-size: 17px;
-  line-height: 1;
   color: var(--text-dim);
   transition: color var(--transition);
 }
