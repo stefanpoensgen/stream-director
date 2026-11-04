@@ -49,6 +49,7 @@ let identity = null; // { login, token } while logged in
 let writer = null;
 let lastMainLoggedIn = null;
 let identityRequest = null;
+let isIdentityRefreshQueued = false;
 let identityRetryTimer = null;
 let identityRetryAttempt = 0;
 let globalBadges = new Map();
@@ -441,8 +442,18 @@ function announceEmoteChange(roomId, { added, removed, renamed, actor }) {
 
 /** Reading works anonymously; sending needs the main window's Twitch login. */
 function refreshIdentity() {
-  identityRequest ??= loadIdentity().finally(() => {
+  // A login change during a lookup needs a fresh one — the running answer may already be stale
+  if (identityRequest) {
+    isIdentityRefreshQueued = true;
+    return;
+  }
+
+  identityRequest = loadIdentity().finally(() => {
     identityRequest = null;
+    if (!isIdentityRefreshQueued) return;
+
+    isIdentityRefreshQueued = false;
+    refreshIdentity();
   });
 }
 

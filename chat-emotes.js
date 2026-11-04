@@ -71,17 +71,19 @@ export function twitchEmote(id, name) {
 export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonalSetChange }) {
   const globalEmotes = new Map();
   const channelEmotes = new Map(); // room ID → Map name → emote
-  const sevenTvSetRooms = new Map(); // 7TV emote set ID → room ID
+  const sevenTvSetRooms = new Map(); // 7TV emote set ID → room IDs (channels may share a set)
   const personalSets = new Map(); // 7TV personal emote set ID → Map name → emote
   const requestedPersonalSets = new Set();
 
   // A set update may arrive twice (by set ID and by channel) — applying it is idempotent
   sevenTvEvents.on(SEVENTV_SET_UPDATE, (body) => {
-    const roomId = sevenTvSetRooms.get(body.id);
-    if (roomId && channelEmotes.has(roomId)) {
-      const change = applySevenTvUpdate(channelEmotes.get(roomId), body, 'channel');
-      if (change.added.length + change.removed.length + change.renamed.length > 0) {
-        onChannelChange(roomId, change);
+    const roomIds = sevenTvSetRooms.get(body.id);
+    if (roomIds) {
+      for (const roomId of roomIds) {
+        const change = applySevenTvUpdate(channelEmotes.get(roomId), body, 'channel');
+        if (change.added.length + change.removed.length + change.renamed.length > 0) {
+          onChannelChange(roomId, change);
+        }
       }
       return;
     }
@@ -148,7 +150,8 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
 
     const setId = sevenTv?.emote_set?.id;
     if (setId) {
-      sevenTvSetRooms.set(setId, roomId);
+      if (!sevenTvSetRooms.has(setId)) sevenTvSetRooms.set(setId, new Set());
+      sevenTvSetRooms.get(setId).add(roomId);
       sevenTvEvents.subscribe(SEVENTV_SET_UPDATE, { object_id: setId });
     }
   }
@@ -159,8 +162,9 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
 
   function forgetChannel(roomId) {
     channelEmotes.delete(roomId);
-    for (const [setId, setRoomId] of [...sevenTvSetRooms]) {
-      if (setRoomId !== roomId) continue;
+    for (const [setId, roomIds] of [...sevenTvSetRooms]) {
+      // The subscription stays while another joined channel still uses the set
+      if (!roomIds.delete(roomId) || roomIds.size > 0) continue;
 
       sevenTvSetRooms.delete(setId);
       sevenTvEvents.unsubscribe(SEVENTV_SET_UPDATE, { object_id: setId });
