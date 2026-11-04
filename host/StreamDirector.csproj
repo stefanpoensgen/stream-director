@@ -38,7 +38,8 @@
     Resource names mirror paths; the renderer is served from wwwroot/*, see EmbeddedFiles.cs.
   -->
   <ItemGroup>
-    <EmbeddedResource Include="..\index.html;..\app.js;..\player.js;..\audio-relay.js;..\audio-tap.js;..\styles.css" LogicalName="wwwroot/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\index.html;..\app.js;..\player.js;..\audio-relay.js;..\audio-tap.js;..\styles.css;..\tokens.css" LogicalName="wwwroot/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\chat.html;..\chat.js;..\chat-irc.js;..\chat-emotes.js;..\chat-message.js;..\chat-sync.js;..\chat-seventv.js;..\chat.css" LogicalName="wwwroot/%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\vendor\hls.light.mjs" LogicalName="wwwroot/vendor/hls.light.mjs" />
     <EmbeddedResource Include="..\LICENSE" LogicalName="licenses/LICENSE" />
     <EmbeddedResource Include="..\vendor\hls.js.LICENSE" LogicalName="licenses/hls.js.LICENSE" />

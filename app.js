@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import { createAudioRelay } from './audio-relay.js';
+import { CHAT_SYNC_CHANNEL, CHAT_SYNC_TYPES } from './chat-sync.js';
 import { createPlayer } from './player.js';
 
 // ─── Configuration ──────────────────────────────────────────────────
@@ -38,6 +39,7 @@ const IDLE_HIDE_DELAY_MS = 3000;
 const SPEAKER_ICON = '\u{1F50A}';
 const MUTED_ICON = '\u{1F507}';
 const TWITCH_LOGIN_URL = 'https://www.twitch.tv/login';
+const CHAT_PAGE_URL = '/chat.html'; // the host shows it in its chat window
 // Same rule as the host — one invalid name would make it reject every live check
 const CHANNEL_NAME_PATTERN = /^[a-z0-9_]{1,25}$/;
 const IS_DEV = new URL(location.href).searchParams.has('dev');
@@ -164,6 +166,7 @@ async function checkAllLive() {
       markOnline(name, stream);
     }
     renderSidebar();
+    publishChatState(); // display names for the chat header
   } finally {
     liveCheckRunning = false;
   }
@@ -362,8 +365,6 @@ function markFocus(name) {
 
   state.focus = name;
   touchLru(name);
-
-  followFocusInChat();
 }
 
 /** Puts `name` into the focus area — into a free slot, else in place of the marked stream. */
@@ -541,6 +542,7 @@ async function refreshLoginState() {
 
   dom.twitchLogin.textContent = isLoggedIn ? 'Twitch logout' : 'Twitch login';
   dom.twitchLogin.title = isLoggedIn ? 'Log out of Twitch' : 'Log in with your Twitch account';
+  publishChatState();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -711,27 +713,33 @@ async function toggleLogin() {
   location.reload();
 }
 
-let chatWindow = null;
+const chatSync = new BroadcastChannel(CHAT_SYNC_CHANNEL);
+let lastChatState = null;
 
-function focusChatUrl() {
-  return `https://www.twitch.tv/popout/${state.focus}/chat?popout=`;
-}
-
-/** Open the Twitch chat popup for the focused channel, or bring the open one to the front. */
+/** Open the chat window, or bring the open one to the front. */
 function openChat() {
-  if (!state.focus) return;
-
-  if (chatWindow && !chatWindow.closed) {
-    chatWindow.location = focusChatUrl();
-    chatWindow.focus();
-  } else {
-    chatWindow = window.open(focusChatUrl(), 'sd-chat');
-  }
+  window.open(CHAT_PAGE_URL, 'sd-chat');
 }
 
-/** An open chat popup follows the focus — without focusing it, the hotkeys must stay with the app. */
-function followFocusInChat() {
-  if (chatWindow && !chatWindow.closed) chatWindow.location = focusChatUrl();
+/**
+ * The chat window shows the marked stream and keeps every stream with a player joined.
+ * It follows over a BroadcastChannel — without being focused, the hotkeys stay with the app.
+ */
+function publishChatState({ force = false } = {}) {
+  const chatState = {
+    type: CHAT_SYNC_TYPES.state,
+    focus: state.focus,
+    channels: getOrderedLiveChannels().map((login) => ({
+      login,
+      displayName: findLiveStream(login)?.displayName ?? null,
+    })),
+    loggedIn: isLoggedIn,
+  };
+  const serialized = JSON.stringify(chatState);
+  if (!force && serialized === lastChatState) return;
+
+  lastChatState = serialized;
+  chatSync.postMessage(chatState);
 }
 
 /** Remove a channel from the pool and clean up any live/focus state. */
@@ -1296,6 +1304,8 @@ function syncPlayers() {
 
   // 6. Toggle empty state
   dom.focusEmpty.classList.toggle('hidden', players.size > 0);
+
+  publishChatState();
 }
 
 /** Shows the mark outline briefly — a permanent frame around one stream was found distracting. */
@@ -1711,6 +1721,9 @@ function bindEvents() {
   dom.sidebarToggle.addEventListener('click', toggleSidebar);
   dom.twitchLogin.addEventListener('click', toggleLogin);
   dom.chatBtn.addEventListener('click', openChat);
+  chatSync.addEventListener('message', ({ data }) => {
+    if (data?.type === CHAT_SYNC_TYPES.hello) publishChatState({ force: true });
+  });
   dom.layoutToggle.addEventListener('click', toggleLayoutMode);
   dom.viewSwitch.addEventListener('click', (event) => {
     const size = Number(event.target.closest('[data-view-size]')?.dataset.viewSize);

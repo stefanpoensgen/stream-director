@@ -32,6 +32,8 @@ internal sealed class MainForm : Form
     private readonly bool _isDev;
     private CoreWebView2Environment? _environment;
     private AuthWindow? _authWindow;
+    private ChatWindow? _chatWindow;
+    private AppRequestHandler? _requestHandler;
     private readonly TwitchClient _twitch = new();
     private readonly FollowsConnection _follows;
     private readonly AudioRenderer _audioRenderer = new();
@@ -55,6 +57,7 @@ internal sealed class MainForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _chatWindow?.Close(); // closed explicitly, it remembers its position
         _audioRenderer.Dispose();
         base.OnFormClosed(e);
     }
@@ -109,9 +112,9 @@ internal sealed class MainForm : Form
         };
 
         _session = new TwitchSession(core.CookieManager);
-        var requestHandler = new AppRequestHandler(environment, _twitch, _session, _follows);
+        _requestHandler = new AppRequestHandler(environment, _twitch, _session, _follows);
         core.AddWebResourceRequestedFilter($"{AppRequestHandler.Origin}/*", CoreWebView2WebResourceContext.All);
-        core.WebResourceRequested += requestHandler.OnWebResourceRequested;
+        core.WebResourceRequested += _requestHandler.OnWebResourceRequested;
 
         core.NavigationStarting += OnNavigationStarting;
         core.NewWindowRequested += OnNewWindowRequested;
@@ -156,6 +159,13 @@ internal sealed class MainForm : Form
             return;
         }
 
+        if (args.Uri == $"{AppRequestHandler.Origin}{ChatWindow.PagePath}")
+        {
+            args.Handled = true;
+            ShowChat();
+            return;
+        }
+
         var isTwitch = uri.Host == "twitch.tv" || uri.Host.EndsWith(".twitch.tv", StringComparison.Ordinal);
 
         if (isTwitch && uri.AbsolutePath.StartsWith(TwitchLoginPath, StringComparison.Ordinal))
@@ -172,11 +182,31 @@ internal sealed class MainForm : Form
             return;
         }
 
-        // Other Twitch popups (chat) open as WebView2 windows sharing our cookies
+        // Other Twitch popups open as WebView2 windows sharing our cookies
         if (isTwitch) return;
 
         args.Handled = true;
         if (args.Uri.StartsWith(GitHubUrlPrefix, StringComparison.Ordinal)) Process.Start(args.Uri);
+    }
+
+    /// <summary>One chat window: opening it again brings the open one to the front.</summary>
+    private void ShowChat()
+    {
+        if (_chatWindow is not null)
+        {
+            if (_chatWindow.WindowState == FormWindowState.Minimized) _chatWindow.WindowState = FormWindowState.Normal;
+            _chatWindow.Activate();
+            return;
+        }
+
+        var window = new ChatWindow(_environment!, _requestHandler!, _isDev, Icon, Bounds);
+        _chatWindow = window;
+        window.FormClosed += (_, _) =>
+        {
+            if (_chatWindow == window) _chatWindow = null;
+            window.Dispose();
+        };
+        window.Show();
     }
 
     private async void ShowLogin(string loginUrl)

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -40,8 +41,14 @@ internal sealed class AppRequestHandler(
     private const string LogoutRoute = "/api/logout";
     private const string FollowedRoute = "/api/follows";
     private const string FollowsConnectRoute = "/api/follows/connect";
+    private const string ChatIdentityRoute = "/api/chat/identity";
+    private const string ChatEmotesRoute = "/api/chat/emotes";
+    private const string ChatChannelsRoute = "/api/chat/channels";
+    private static readonly Regex UserIdPattern = new("^[0-9]{1,20}$");
     private static readonly Regex PlaylistRoute = new(@"^/api/playlist/([a-z0-9_]+)\.m3u8$");
     private static readonly Regex AvatarRoute = new(@"^/api/avatar/([a-z0-9_]+)$");
+    private static readonly Regex ChatBadgesRoute = new(@"^/api/chat/badges/([a-z0-9_]+)$");
+    private static readonly Regex ChatCheermotesRoute = new(@"^/api/chat/cheermotes/([a-z0-9_]+)$");
 
     private readonly JavaScriptSerializer _json = new();
 
@@ -72,12 +79,21 @@ internal sealed class AppRequestHandler(
         if (uri.AbsolutePath == LogoutRoute) return await LogoutAsync(request);
         if (uri.AbsolutePath == FollowedRoute) return await FollowedAsync();
         if (uri.AbsolutePath == FollowsConnectRoute) return await FollowsConnectAsync(request);
+        if (uri.AbsolutePath == ChatIdentityRoute) return await ChatIdentityAsync();
+        if (uri.AbsolutePath == ChatEmotesRoute) return await ChatEmotesAsync();
+        if (uri.AbsolutePath == ChatChannelsRoute) return await ChatChannelsAsync(uri);
 
         var playlistMatch = PlaylistRoute.Match(uri.AbsolutePath);
         if (playlistMatch.Success) return await PlaylistAsync(playlistMatch.Groups[1].Value);
 
         var avatarMatch = AvatarRoute.Match(uri.AbsolutePath);
         if (avatarMatch.Success) return await AvatarAsync(avatarMatch.Groups[1].Value);
+
+        var chatBadgesMatch = ChatBadgesRoute.Match(uri.AbsolutePath);
+        if (chatBadgesMatch.Success) return await ChatBadgesAsync(chatBadgesMatch.Groups[1].Value);
+
+        var chatCheermotesMatch = ChatCheermotesRoute.Match(uri.AbsolutePath);
+        if (chatCheermotesMatch.Success) return await ChatCheermotesAsync(chatCheermotesMatch.Groups[1].Value);
 
         return Static(uri.AbsolutePath);
     }
@@ -136,6 +152,64 @@ internal sealed class AppRequestHandler(
         var (userCode, verificationUri) = await follows.StartConnectAsync();
 
         return Response(200, _json.Serialize(new { userCode, verificationUri }), JsonContentType);
+    }
+
+    private async Task<CoreWebView2WebResourceResponse> ChatBadgesAsync(string channel)
+    {
+        if (!TwitchClient.IsValidChannelName(channel)) return Text(400, "Invalid channel name");
+
+        return Response(200, _json.Serialize(await twitch.FetchChatBadgesAsync(channel)), JsonContentType);
+    }
+
+    private async Task<CoreWebView2WebResourceResponse> ChatCheermotesAsync(string channel)
+    {
+        if (!TwitchClient.IsValidChannelName(channel)) return Text(400, "Invalid channel name");
+
+        return Response(200, _json.Serialize(await twitch.FetchCheermotesAsync(channel)), JsonContentType);
+    }
+
+    /// <summary>The logged-in user's own Twitch emotes, by owner — an empty list when logged out.</summary>
+    private async Task<CoreWebView2WebResourceResponse> ChatEmotesAsync()
+    {
+        var token = await session.GetAuthTokenAsync();
+        var emoteSets = token is null ? [] : await twitch.FetchOwnEmotesAsync(token);
+
+        return Response(200, _json.Serialize(emoteSets), JsonContentType);
+    }
+
+    private async Task<CoreWebView2WebResourceResponse> ChatChannelsAsync(Uri uri)
+    {
+        var ids = QueryValue(uri, "ids").Split([','], StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (ids.Count == 0 || ids.Count > TwitchClient.UserBatchSize || !ids.All(UserIdPattern.IsMatch)) return Text(400, "Invalid user IDs");
+
+        return Response(200, _json.Serialize(await twitch.FetchChannelsByIdAsync(ids)), JsonContentType);
+    }
+
+    /// <summary>
+    /// { loggedIn: false }, or the login with its token: the chat page sends over Twitch IRC itself.
+    /// Only app pages can read it — WebView2 hands requests to the app origin to this handler alone.
+    /// </summary>
+    private async Task<CoreWebView2WebResourceResponse> ChatIdentityAsync()
+    {
+        var token = await session.GetAuthTokenAsync();
+        var login = token is null ? null : await FetchLoginOrNullAsync(token);
+        var identity = login is null ? (object)new { loggedIn = false } : new { loggedIn = true, login, token };
+
+        return Response(200, _json.Serialize(identity), JsonContentType);
+    }
+
+    /// <summary>An expired token means logged out for the chat — reading works without one.</summary>
+    private async Task<string?> FetchLoginOrNullAsync(string token)
+    {
+        try
+        {
+            return await twitch.FetchLoginAsync(token);
+        }
+        catch (HttpRequestException error)
+        {
+            Trace.WriteLine($"Chat login could not be resolved: {error.Message}");
+            return null;
+        }
     }
 
     private async Task<CoreWebView2WebResourceResponse> AuthAsync() =>

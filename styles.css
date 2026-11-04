@@ -1,31 +1,3 @@
-/* ─── Design Tokens ──────────────────────────────────────────────── *
- * OLED-friendly: the app stays on screen for hours, so everything that sits at a fixed
- * spot (sidebar chrome, borders, markers, badges, tile labels) is kept dim to avoid
- * burn-in. Transient states (hover, focus ring, OSD) may be brighter.                */
-:root {
-  --bg: #000; /* true black: OLED pixels stay off */
-  --surface: #0d0d10;
-  --surface-hover: #1a1a24;
-  --border: #3a4c53; /* control outlines, dimmed: 2.3:1 on --bg */
-  --tile-border: #12262a; /* video tiles: part of the captured picture, kept subtle */
-  --accent: #1f5b65; /* fill behind light text: 5.2:1 */
-  --accent-hover: #174750; /* darker on hover so light text stays readable: 6.9:1 */
-  --accent-text: #5ec4d3; /* transient accent: hover text and focus ring: ≥ 10:1 */
-  --marker: #3a8d9b; /* persistent markers (marked stream, active view, focus row): half the luminance of --accent-text, 5.5:1 */
-  --accent-dim: rgba(11, 52, 58, 0.5);
-  --text: #d4d4dc; /* off-white instead of pure white: 14.3:1 */
-  --text-dim: #a3a3ba; /* secondary text: ≥ 7:1 */
-  --toggle-off: #5c5c70; /* 3.0:1 on --surface */
-  --green: #19945a; /* live toggle, static per live channel: 2.6× dimmer than #00e676 */
-  --red: #ff5252; /* red text on dark: 5.8:1 */
-  --red-strong: #8e1c1c; /* fill behind light text: 6.1:1 */
-  --twitch: #9b6fe0; /* Twitch purple, dimmed: 5.7:1 on --bg */
-  --twitch-dim: rgba(145, 70, 255, 0.35);
-  --sidebar-w: 260px;
-  --radius: 6px;
-  --transition: 0.2s ease;
-}
-
 /* ─── Keyboard focus ─────────────────────────────────────────────── */
 :focus-visible {
   outline: 2px solid var(--accent-text);

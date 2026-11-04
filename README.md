@@ -18,6 +18,7 @@ StreamDirector shows up to 14 Twitch channels in one 1920×1080 window: one larg
 - **Twitch Turbo support** — log in once and all streams play without ads
 - **Followed channels** — everything you follow on Twitch right in the list, live ones on top
 - **Live status** — see at a glance which of your channels are streaming
+- **Chat with 7TV, BetterTTV and FrankerFaceZ** — its own lightweight chat window that follows the marked stream instantly: third-party emotes (also 7TV personal emotes), 7TV name paints and badges, cheermotes, shared chats, recent history, an emote picker, replies and Tab completion
 - **Tiny** — a single 2 MB `.exe`, no installation
 
 ## Download
@@ -63,11 +64,13 @@ Tips for a clean picture:
 | `1` – `4` | How many streams share the focus          |
 | `L`       | Switch between the OBS and viewer layout  |
 | `S`       | Show/hide the sidebar                     |
-| `C`       | Open the chat of the focus                |
+| `C`       | Open the chat window                      |
 | `F11`     | Fullscreen on/off                         |
 | `Escape`  | Close the import dialog                   |
 
-Buttons in the bottom-left corner: **Menu** / **Hide menu** (channel list), **Chat** (chat of the focus in a popup), **1** – **4** (how many streams share the focus, all of them audible), **OBS layout** / **Viewer layout** and **Twitch login** / **Twitch logout**.
+Buttons in the bottom-left corner: **Menu** / **Hide menu** (channel list), **Chat** (chat of the marked stream in its own window), **1** – **4** (how many streams share the focus, all of them audible), **OBS layout** / **Viewer layout** and **Twitch login** / **Twitch logout**.
+
+In the chat window: **☺** opens the emote picker, `Tab` completes emotes and names (`@` for names only), `↑` recalls sent messages, `Ctrl` + mouse wheel scales the text, a click on a name mentions it and **↩** on a message replies to it. Scrolling up pauses the chat.
 
 Hovering the focus shows its name with the resolution actually on screen (e.g. `1080p60`) and its viewers, its volume slider and mute button.
 
@@ -125,6 +128,7 @@ host/                    C# WebView2 host
   TwitchClient.cs        Twitch API client (live status, HLS playlists)
   TwitchSession.cs       Login state (WebView2 cookies), logout
   AuthWindow.cs          Twitch window for login / connecting the follows, closes itself when done
+  ChatWindow.cs          Chat window (chat.html), remembers position, size and zoom
   FollowsConnection.cs   Followed channels: own Twitch app (device login) + official API
   AudioRenderer.cs       Plays the relayed player audio from StreamDirector.exe (WASAPI)
   EmbeddedFiles.cs       Single-file support (embedded frontend, WebView2 assemblies and loader)
@@ -133,7 +137,15 @@ index.html, app.js       Frontend: state, layout, players, volume, hotkeys
 player.js                HLS player per channel (360p tile / source focus)
 audio-relay.js           Routes player audio via Web Audio to the host
 audio-tap.js             AudioWorklet that hands out 10 ms PCM chunks
+chat.html, chat.js       Chat window: channels, history, scrolling, sending, replies, Tab completion
+chat-irc.js              Twitch IRC over WebSocket (parser, reconnecting connection)
+chat-emotes.js           7TV / BetterTTV / FrankerFaceZ emotes, 7TV personal sets and live updates
+chat-seventv.js          7TV EventAPI connection, name paints and badges
+chat-message.js          Chat message model and rendering (emotes, badges, links, mentions)
+chat-sync.js             Main window ↔ chat window messages (BroadcastChannel)
+tokens.css               Design tokens shared by both windows
 styles.css               Dark theme (OLED-friendly: true black, dim static chrome), CSS grid layout
+chat.css                 Chat window styles
 vendor/hls.light.mjs     Vendored hls.js
 ```
 
@@ -142,16 +154,22 @@ vendor/hls.light.mjs     Vendored hls.js
 - **Audio:** WebView2 plays sound from its own helper processes, which OBS's "Capture Audio" does not see as part of the StreamDirector window. So the players' audio goes through Web Audio into an AudioWorklet (WebView2 stays silent), is sent to the host in 10 ms chunks and played by `StreamDirector.exe` itself. Measured cost: 10–20 ms more latency than WebView2's own output.
 - **Single file:** frontend, licenses and the WebView2 assemblies are embedded resources. Only the native `WebView2Loader.dll` cannot run from memory; it is written once to `%LOCALAPPDATA%\StreamDirector\WebView2Loader\`.
 - **Followed channels:** the website login cannot read follows (Twitch blocks them on its internal API, and the token lacks `user:read:follows`). StreamDirector therefore has its own public Twitch app and asks for exactly that permission via the device code flow; `FollowsConnection.cs` keeps the tokens DPAPI-encrypted in `%LOCALAPPDATA%\StreamDirector\follows.dat` and reads the follows from the official API (Helix: `channels/followed` for all follows, cached 10 min, `streams/followed` for the live ones). Logout also removes this connection.
+- **Chat:** an own chat instead of Twitch's popout page — far lighter, fits the OLED theme and switches instantly, because every stream with a player stays joined in the background. An anonymous IRC connection reads, a second one with the website login sends (Twitch delivers your own messages to the reading connection, with emotes and badges). Emotes come from the public APIs of [7TV](https://7tv.app) (changes, name paints, badges and personal emotes of chatters arrive live via its EventAPI), [BetterTTV](https://betterttv.com) and [FrankerFaceZ](https://www.frankerfacez.com) (via BetterTTV's cache), recent history from [recent-messages](https://recent-messages.robotty.de) — these services see which channels the chat window is joined to. Polls, predictions and channel points stay with Twitch's own chat, one click away (**Twitch ↗**).
 - **State** (channels, volumes, layout) lives in the WebView2 profile's `localStorage`.
 
-| Endpoint                        | Purpose                                                               |
-| ------------------------------- | --------------------------------------------------------------------- |
-| `GET /api/live?channels=a,b`    | Which of the channels are streaming, with title, category and viewers |
-| `GET /api/playlist/<name>.m3u8` | HLS master playlist (with Turbo token if any)                         |
-| `GET /api/auth`                 | `{ "loggedIn": true/false }`                                          |
-| `POST /api/logout`              | Drop the Twitch session                                               |
-| `GET /api/follows`              | `{ connected, channels }` — all follows, live                         |
-| `POST /api/follows/connect`     | Start the Twitch device login for the follows                         |
+| Endpoint                          | Purpose                                                               |
+| --------------------------------- | --------------------------------------------------------------------- |
+| `GET /api/live?channels=a,b`      | Which of the channels are streaming, with title, category and viewers |
+| `GET /api/playlist/<name>.m3u8`   | HLS master playlist (with Turbo token if any)                         |
+| `GET /api/auth`                   | `{ "loggedIn": true/false }`                                          |
+| `POST /api/logout`                | Drop the Twitch session                                               |
+| `GET /api/follows`                | `{ connected, channels }` — all follows, live                         |
+| `POST /api/follows/connect`       | Start the Twitch device login for the follows                         |
+| `GET /api/chat/badges/<name>`     | Twitch's global chat badges and the channel's own                     |
+| `GET /api/chat/identity`          | `{ loggedIn, login, token }` — the chat sends over IRC with it        |
+| `GET /api/chat/emotes`            | The logged-in user's own Twitch emotes, by owner                      |
+| `GET /api/chat/cheermotes/<name>` | Global and channel cheermotes with tiers and colors                   |
+| `GET /api/chat/channels?ids=a,b`  | Login and display name by user ID (shared chat sources)               |
 
 ### Dependencies
 

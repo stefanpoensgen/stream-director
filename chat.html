@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat</title>
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="chat.css" />
+  </head>
+  <body>
+    <div class="chat">
+      <header class="chat-header">
+        <img class="channel-avatar hidden" id="channel-avatar" alt="" />
+        <div class="channel-info">
+          <div class="channel-name" id="channel-name"></div>
+          <div class="room-modes" id="room-modes"></div>
+        </div>
+        <button
+          class="twitch-chat hidden"
+          id="twitch-chat"
+          title="Open Twitch's own chat — polls, predictions, channel points"
+        >
+          Twitch&nbsp;&#8599;
+        </button>
+      </header>
+      <div class="chat-status hidden" id="chat-status" role="status"></div>
+
+      <div class="messages-area">
+        <div class="messages" id="messages">
+          <div class="message-list" id="message-list" role="log" aria-live="off"></div>
+          <div class="chat-empty hidden" id="chat-empty">Mark a stream to see its chat</div>
+        </div>
+        <button class="resume hidden" id="resume"></button>
+      </div>
+
+      <div class="composer-area">
+        <div class="emote-picker hidden" id="emote-picker">
+          <input
+            type="search"
+            class="emote-search"
+            id="emote-search"
+            placeholder="Search emotes"
+            spellcheck="false"
+            aria-label="Search emotes"
+          />
+          <div class="emote-picker-list" id="emote-picker-list"></div>
+        </div>
+        <div class="reply-bar hidden" id="reply-bar">
+          <span class="reply-text" id="reply-text"></span>
+          <button class="reply-cancel" id="reply-cancel" title="Cancel reply (Esc)">&times;</button>
+        </div>
+        <form class="composer" id="composer" autocomplete="off">
+          <input
+            type="text"
+            class="composer-input"
+            id="composer-input"
+            maxlength="500"
+            spellcheck="false"
+            aria-label="Chat message"
+          />
+          <button
+            type="button"
+            class="emote-button hidden"
+            id="emote-button"
+            title="Emotes"
+            aria-label="Emotes"
+          >
+            &#9786;
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="emote-card hidden" id="emote-card" role="tooltip"></div>
+
+    <script type="module" src="chat.js"></script>
+  </body>
+</html>

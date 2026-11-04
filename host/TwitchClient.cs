@@ -26,7 +26,7 @@ internal sealed class TwitchClient
     private const string GqlUrl = "https://gql.twitch.tv/gql";
     private const string ClientId = "kimne78kx3ncx6brgo4mv6wki5h1ko";
     private const string UsherUrl = "https://usher.ttvnw.net/api/channel/hls";
-    private const int LiveCheckBatchSize = 100; // users(logins:) takes at most 100 logins
+    public const int UserBatchSize = 100; // users(logins:) and users(ids:) take at most 100 each
     private const int AvatarWidth = 70; // profileImageURL only accepts Twitch's fixed sizes (28, 50, 70, 150, 300, 600)
 
     private const string PlaybackTokenQuery = """
@@ -44,6 +44,11 @@ internal sealed class TwitchClient
     private const string LiveWithFields =
         "id session { guests { user { id displayName stream { viewersCount } } } }";
 
+    private const string CheerGroupFields = "templateURL nodes { prefix tiers { bits } }";
+
+    // Size NORMAL is the 18 px image (…/1); the chat page derives the sharper ones (…/2, …/3) from it
+    private const string BadgeFields = "setID version title imageURL(size: NORMAL)";
+
     private static readonly Regex ChannelNamePattern = new("^[a-z0-9_]{1,25}$");
 
     private readonly HttpClient _http = new();
@@ -52,6 +57,10 @@ internal sealed class TwitchClient
 
     // Channel name → its profile image; avatars hardly ever change, so once per session is enough
     private readonly Dictionary<string, (byte[] Content, string ContentType)> _avatars = new();
+
+    // Twitch's global chat badges and cheermotes, the same for every channel — once per session
+    private List<object>? _globalBadges;
+    private (List<object> Cheermotes, List<object> Colors)? _globalCheer;
 
     public static bool IsValidChannelName(string name) => ChannelNamePattern.IsMatch(name);
 
@@ -64,9 +73,9 @@ internal sealed class TwitchClient
         var liveUsers = new List<(IDictionary User, IDictionary Stream)>();
 
         // One list query per batch — Twitch rejects queries with more than 15 aliased root fields
-        for (var start = 0; start < names.Count; start += LiveCheckBatchSize)
+        for (var start = 0; start < names.Count; start += UserBatchSize)
         {
-            var logins = string.Join(", ", names.Skip(start).Take(LiveCheckBatchSize).Select(name => $"\"{name}\""));
+            var logins = string.Join(", ", names.Skip(start).Take(UserBatchSize).Select(name => $"\"{name}\""));
             var data = await GqlAsync(new { query = $"query {{ users(logins: [{logins}]) {{ {LiveStreamFields} }} }}" });
 
             // Unknown or banned logins come back as null
@@ -152,6 +161,115 @@ internal sealed class TwitchClient
 
         return avatar;
     }
+
+    /// <summary>
+    /// The chat badges a channel's chat shows: Twitch's global ones (moderator, VIP, Prime …) and the
+    /// channel's own (subscriber months, bits) — each with set, version, title and image URL.
+    /// </summary>
+    public async Task<object> FetchChatBadgesAsync(string channel)
+    {
+        _globalBadges ??= ToBadges((await GqlAsync(new { query = $"query {{ badges {{ {BadgeFields} }} }}" }))["badges"]);
+
+        var data = await GqlAsync(new { query = $"query {{ user(login: \"{channel}\") {{ broadcastBadges {{ {BadgeFields} }} }} }}" });
+
+        return new { global = _globalBadges, channel = ToBadges((data["user"] as IDictionary)?["broadcastBadges"]) };
+    }
+
+    /// <summary>
+    /// Cheermotes a channel's chat shows ("Cheer100", "Corgo500" …): Twitch's global ones and the channel's own,
+    /// each with its prefix, bit tiers and image template, plus the color of each tier.
+    /// </summary>
+    public async Task<object> FetchCheermotesAsync(string channel)
+    {
+        if (_globalCheer is null)
+        {
+            var global = (await GqlAsync(new
+            {
+                query = $"query {{ cheerConfig {{ displayConfig {{ colors {{ bits color }} }} groups {{ {CheerGroupFields} }} }} }}",
+            }))["cheerConfig"] as IDictionary;
+            var colors = ((global?["displayConfig"] as IDictionary)?["colors"] as ICollection ?? Array.Empty<object>())
+                .OfType<IDictionary>()
+                .Select(color => (object)new { bits = color["bits"] as int? ?? 0, color = color["color"] as string })
+                .ToList();
+            _globalCheer = (ToCheermotes(global?["groups"]), colors);
+        }
+
+        var data = await GqlAsync(new { query = $"query {{ user(login: \"{channel}\") {{ cheer {{ cheerGroups {{ {CheerGroupFields} }} }} }} }}" });
+        var channelCheermotes = ToCheermotes(((data["user"] as IDictionary)?["cheer"] as IDictionary)?["cheerGroups"]);
+
+        return new { cheermotes = channelCheermotes.Concat(_globalCheer.Value.Cheermotes), colors = _globalCheer.Value.Colors };
+    }
+
+    /// <summary>The emotes the logged-in user may use (Twitch globals, subscriptions, follower emotes), by owner.</summary>
+    public async Task<List<object>> FetchOwnEmotesAsync(string authToken)
+    {
+        var data = await GqlAsync(new { query = "query { currentUser { emoteSets { id owner { displayName } emotes { id token } } } }" }, authToken);
+        var sets = (data["currentUser"] as IDictionary)?["emoteSets"] as ICollection ?? Array.Empty<object>();
+
+        return sets.OfType<IDictionary>()
+            .Select(set => (object)new
+            {
+                owner = (set["owner"] as IDictionary)?["displayName"] as string,
+                emotes = (set["emotes"] as ICollection ?? Array.Empty<object>())
+                    .OfType<IDictionary>()
+                    .Select(emote => new { id = (string)emote["id"], name = (string)emote["token"] })
+                    .ToList(),
+            })
+            .ToList();
+    }
+
+    /// <summary>Login and display name of channels by user ID — e.g. the other channels of a shared chat.</summary>
+    public async Task<List<object>> FetchChannelsByIdAsync(IReadOnlyList<string> ids)
+    {
+        var idList = string.Join(", ", ids.Select(id => $"\"{id}\""));
+        var data = await GqlAsync(new { query = $"query {{ users(ids: [{idList}]) {{ id login displayName }} }}" });
+
+        return (data["users"] as ICollection ?? Array.Empty<object>())
+            .OfType<IDictionary>()
+            .Select(user => (object)new { id = (string)user["id"], login = (string)user["login"], displayName = user["displayName"] as string })
+            .ToList();
+    }
+
+    /// <summary>The login name the auth token belongs to — the chat needs it as IRC nickname.</summary>
+    public async Task<string?> FetchLoginAsync(string authToken)
+    {
+        var data = await GqlAsync(new { query = "query { currentUser { login } }" }, authToken);
+
+        return (data["currentUser"] as IDictionary)?["login"] as string;
+    }
+
+    /// <summary>Cheer groups → { prefix, template, tiers }; the template has TIER and SCALE left to fill in.</summary>
+    private static List<object> ToCheermotes(object? groups) =>
+        (groups as ICollection ?? Array.Empty<object>())
+            .OfType<IDictionary>()
+            .SelectMany(group => (group["nodes"] as ICollection ?? Array.Empty<object>())
+                .OfType<IDictionary>()
+                .Select(node => (object)new
+                {
+                    prefix = (string)node["prefix"],
+                    template = ((string)group["templateURL"])
+                        .Replace("PREFIX", ((string)node["prefix"]).ToLowerInvariant())
+                        .Replace("BACKGROUND", "dark")
+                        .Replace("ANIMATION", "animated")
+                        .Replace("EXTENSION", "gif"),
+                    tiers = (node["tiers"] as ICollection ?? Array.Empty<object>())
+                        .OfType<IDictionary>()
+                        .Select(tier => tier["bits"] as int? ?? 0)
+                        .ToList(),
+                }))
+            .ToList();
+
+    private static List<object> ToBadges(object? badges) =>
+        (badges as ICollection ?? Array.Empty<object>())
+            .OfType<IDictionary>()
+            .Select(badge => (object)new
+            {
+                set = (string)badge["setID"],
+                version = (string)badge["version"],
+                title = badge["title"] as string,
+                url = badge["imageURL"] as string,
+            })
+            .ToList();
 
     /// <summary>
     /// Fetches the HLS master playlist of a channel.
