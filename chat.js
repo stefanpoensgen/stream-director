@@ -40,7 +40,7 @@ const dom = {};
 
 /** login → { login, displayName, roomId, messages, roomState, badges, cheermotes, chatters } */
 const channels = new Map();
-// Other channels of a shared chat (Stream Together), by room ID: { login, displayName, badges }
+// Other channels of a shared chat (Stream Together), by room ID: { login, displayName, badges, cheermotes }
 const sharedSources = new Map();
 const requestedSources = new Set();
 let ownTwitchEmotes = []; // [{ owner, emotes }] the logged-in user may send
@@ -219,8 +219,16 @@ async function loadBadges(channel) {
 
 /** Cheermotes by lowercase prefix, each with its bit tiers ascending; tier colors ascending too. */
 async function loadCheermotes(channel) {
-  const cheer = await fetchChatApi(`/api/chat/cheermotes/${channel.login}`);
-  if (!cheer) return;
+  const cheermotes = await fetchCheermotes(channel.login);
+  if (!cheermotes) return;
+
+  channel.cheermotes = cheermotes;
+  if (isCurrent(channel)) invalidate(channel);
+}
+
+async function fetchCheermotes(login) {
+  const cheer = await fetchChatApi(`/api/chat/cheermotes/${login}`);
+  if (!cheer) return null;
 
   const byPrefix = new Map();
   for (const { prefix, template, tiers } of cheer.cheermotes) {
@@ -231,8 +239,7 @@ async function loadCheermotes(channel) {
   }
   const colors = [...cheer.colors].sort((a, b) => a.bits - b.bits);
 
-  channel.cheermotes = { byPrefix, colors };
-  if (isCurrent(channel)) invalidate(channel);
+  return { byPrefix, colors };
 }
 
 /** JSON from the host's chat API, or null — a missing extra must not break the chat. */
@@ -568,7 +575,9 @@ function renderContext(channel) {
         : channel.badges;
       return badges?.get(key) ?? globalBadges.get(key);
     },
-    findCheermote: (word) => findCheermote(channel, word),
+    // A shared chat message cheers with its own channel's cheermotes
+    findCheermote: (word, message) =>
+      findCheermote(message.sourceRoomId ? sourceChannel(message.sourceRoomId) : channel, word),
     findSource: sourceChannel,
     styleOf: (userId) => cosmetics.styleOf(userId),
     ownLogin: identity?.login ?? null,
@@ -579,7 +588,7 @@ function renderContext(channel) {
 /** "Cheer100" → the cheermote image of its tier and the tier's color, null for other words. */
 function findCheermote(channel, word) {
   const cheer = parseCheerWord(word);
-  const cheermote = cheer && channel.cheermotes?.byPrefix.get(cheer.prefix);
+  const cheermote = cheer && channel?.cheermotes?.byPrefix.get(cheer.prefix);
   if (!cheermote) return null;
 
   const tier = cheermote.tiers.findLast((bits) => bits <= cheer.bits) ?? cheermote.tiers[0];
@@ -618,11 +627,15 @@ async function loadSharedSource(roomId) {
   const [found] = (await fetchChatApi(`/api/chat/channels?ids=${roomId}`)) ?? [];
   if (!found) return;
 
-  const badges = await fetchChatApi(`/api/chat/badges/${found.login}`);
+  const [badges, cheermotes] = await Promise.all([
+    fetchChatApi(`/api/chat/badges/${found.login}`),
+    fetchCheermotes(found.login),
+  ]);
   const source = {
     login: found.login,
     displayName: found.displayName ?? found.login,
     badges: badges ? toBadgeMap(badges.channel) : new Map(),
+    cheermotes,
   };
   sharedSources.set(roomId, source);
   if (!emotes.hasChannel(roomId)) await emotes.loadChannel(roomId);
