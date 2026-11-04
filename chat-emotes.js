@@ -70,7 +70,9 @@ export function twitchEmote(id, name) {
  */
 export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonalSetChange }) {
   const globalEmotes = new Map();
-  const channelEmotes = new Map(); // room ID → Map name → emote
+  // Room ID → { sevenTv, bttv, ffz }, each a Map name → emote. Kept apart, so a 7TV emote removed
+  // live uncovers a BetterTTV or FFZ emote of the same name again
+  const channelEmotes = new Map();
   const sevenTvSetRooms = new Map(); // 7TV emote set ID → room IDs (channels may share a set)
   const personalSets = new Map(); // 7TV personal emote set ID → Map name → emote
   const requestedPersonalSets = new Set(); // in flight; a failed one is tried again on its next grant
@@ -81,7 +83,7 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
     const roomIds = sevenTvSetRooms.get(body.id);
     if (roomIds) {
       for (const roomId of roomIds) {
-        const change = applySevenTvUpdate(channelEmotes.get(roomId), body, 'channel');
+        const change = applySevenTvUpdate(channelEmotes.get(roomId).sevenTv, body, 'channel');
         if (change.added.length + change.removed.length + change.renamed.length > 0) {
           onChannelChange(roomId, change);
         }
@@ -137,22 +139,13 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
     // Left (or loaded again) in the meantime — this result must not bring the room back
     if (channelLoads.get(roomId) !== load) return;
 
-    const emotes = new Map();
-    addAll(
-      emotes,
-      (ffz ?? []).map((emote) => fromFfz(emote, 'channel')),
-    );
-    addAll(
-      emotes,
-      [...(bttv?.channelEmotes ?? []), ...(bttv?.sharedEmotes ?? [])].map((emote) =>
+    channelEmotes.set(roomId, {
+      sevenTv: toEmoteMap(sevenTv?.emote_set?.emotes, (emote) => fromSevenTv(emote, 'channel')),
+      bttv: toEmoteMap([...(bttv?.channelEmotes ?? []), ...(bttv?.sharedEmotes ?? [])], (emote) =>
         fromBttv(emote, 'channel'),
       ),
-    );
-    addAll(
-      emotes,
-      (sevenTv?.emote_set?.emotes ?? []).map((emote) => fromSevenTv(emote, 'channel')),
-    );
-    channelEmotes.set(roomId, emotes);
+      ffz: toEmoteMap(ffz, (emote) => fromFfz(emote, 'channel')),
+    });
 
     const setId = sevenTv?.emote_set?.id;
     if (setId) {
@@ -196,7 +189,9 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
    * personal 7TV emotes (`personalSetIds`), then global ones.
    */
   function find(roomId, name, personalSetIds) {
-    const channelEmote = channelEmotes.get(roomId)?.get(name);
+    const channel = channelEmotes.get(roomId);
+    const channelEmote =
+      channel && (channel.sevenTv.get(name) ?? channel.bttv.get(name) ?? channel.ffz.get(name));
     if (channelEmote) return channelEmote;
 
     for (const setId of personalSetIds ?? []) {
@@ -215,7 +210,7 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
         .sort((a, b) => a.name.localeCompare(b.name));
 
     return {
-      channel: byName(channelEmotes.get(roomId) ?? new Map()),
+      channel: byName(mergedChannelEmotes(channelEmotes.get(roomId))),
       global: byName(globalEmotes),
     };
   }
@@ -223,13 +218,19 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
   return { loadGlobal, loadChannel, hasChannel, forgetChannel, ensurePersonalSet, find, usable };
 }
 
-function toSevenTvSet(set) {
+/** One emote per name, by priority 7TV > BetterTTV > FFZ — what `find` resolves to. */
+function mergedChannelEmotes(channel) {
+  return new Map(channel ? [...channel.ffz, ...channel.bttv, ...channel.sevenTv] : []);
+}
+
+function toEmoteMap(list, convert) {
   const emotes = new Map();
-  addAll(
-    emotes,
-    (set.emotes ?? []).map((emote) => fromSevenTv(emote, 'personal')),
-  );
+  addAll(emotes, (list ?? []).map(convert));
   return emotes;
+}
+
+function toSevenTvSet(set) {
+  return toEmoteMap(set.emotes, (emote) => fromSevenTv(emote, 'personal'));
 }
 
 function addAll(target, emotes) {
@@ -331,9 +332,8 @@ function applySevenTvUpdate(emotes, body, scope) {
 
     const rename = nested ? nestedRename(value) : fullRename(previous, value, scope);
     const emote = rename && emotes.get(rename.from);
-    // 7TV wins over BetterTTV and FFZ — only another 7TV emote (or this one, delivered twice) keeps the name
-    if (!emote || emote.provider !== PROVIDERS.sevenTv) continue;
-    if (emotes.get(rename.to)?.provider === PROVIDERS.sevenTv) continue;
+    // A set holds 7TV emotes only; the new name taken means this rename was delivered twice
+    if (!emote || emotes.has(rename.to)) continue;
 
     emotes.delete(rename.from);
     emotes.set(rename.to, { ...emote, ...rename.emote, name: rename.to });
@@ -363,7 +363,7 @@ function fullRename(previous, value, scope) {
 function deleteSevenTvEmote(emotes, id) {
   let deleted = false;
   for (const [name, emote] of [...emotes]) {
-    if (emote.provider !== PROVIDERS.sevenTv || emote.id !== id) continue;
+    if (emote.id !== id) continue;
 
     emotes.delete(name);
     deleted = true;
