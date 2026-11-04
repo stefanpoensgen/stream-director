@@ -73,7 +73,8 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
   const channelEmotes = new Map(); // room ID → Map name → emote
   const sevenTvSetRooms = new Map(); // 7TV emote set ID → room IDs (channels may share a set)
   const personalSets = new Map(); // 7TV personal emote set ID → Map name → emote
-  const requestedPersonalSets = new Set();
+  const requestedPersonalSets = new Set(); // in flight; a failed one is tried again on its next grant
+  const channelLoads = new Map(); // room ID → token of its latest load, gone once the room is forgotten
 
   // A set update may arrive twice (by set ID and by channel) — applying it is idempotent
   sevenTvEvents.on(SEVENTV_SET_UPDATE, (body) => {
@@ -125,11 +126,16 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
   }
 
   async function loadChannel(roomId) {
+    const load = Symbol(roomId);
+    channelLoads.set(roomId, load);
+
     const [sevenTv, bttv, ffz] = await Promise.all([
       fetchJson(`${SEVENTV_API}/users/twitch/${roomId}`),
       fetchJson(`${BTTV_API}/users/twitch/${roomId}`),
       fetchJson(`${BTTV_API}/frankerfacez/users/twitch/${roomId}`),
     ]);
+    // Left (or loaded again) in the meantime — this result must not bring the room back
+    if (channelLoads.get(roomId) !== load) return;
 
     const emotes = new Map();
     addAll(
@@ -161,6 +167,7 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
   }
 
   function forgetChannel(roomId) {
+    channelLoads.delete(roomId);
     channelEmotes.delete(roomId);
     for (const [setId, roomIds] of [...sevenTvSetRooms]) {
       // The subscription stays while another joined channel still uses the set
@@ -177,6 +184,7 @@ export function createEmoteRegistry(sevenTvEvents, { onChannelChange, onPersonal
 
     requestedPersonalSets.add(setId);
     const set = await fetchJson(`${SEVENTV_API}/emote-sets/${setId}`);
+    requestedPersonalSets.delete(setId);
     if (!set || personalSets.has(setId)) return;
 
     personalSets.set(setId, toSevenTvSet(set));
